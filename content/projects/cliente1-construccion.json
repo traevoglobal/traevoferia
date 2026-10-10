@@ -1,0 +1,23 @@
+{
+  "slug": "cliente1-construccion",
+  "group": "clientes",
+  "name": "Cliente 1: construcción inteligente",
+  "client": "Cliente 1",
+  "color": "#7A4FD1",
+  "order": 5,
+  "es": {
+    "title": "",
+    "summary": "",
+    "needs": [],
+    "requirements": [],
+    "questions": []
+  },
+  "zh": {
+    "title": "",
+    "summary": "",
+    "needs": [],
+    "requirements": [],
+    "questions": []
+  },
+  "photos": []
+}

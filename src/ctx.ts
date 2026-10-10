@@ -1,0 +1,20 @@
+import { createContext, useContext } from 'react';
+import type { Profile } from './lib/types';
+
+export type Route = { kind: 'project'; slug: string } | { kind: 'supplier'; id: string };
+
+export interface AppCtx {
+  myId: string;
+  me?: Profile;
+  profiles: Map<string, Profile>;
+  push: (r: Route) => void;
+  back: () => void;
+  openCapture: () => void;
+  openPresent: (slug: string) => void;
+  openQR: (slug: string) => void;
+  openViewer: (paths: string[], index: number) => void;
+  openProfile: () => void;
+}
+
+export const Ctx = createContext<AppCtx>(null as unknown as AppCtx);
+export const useApp = () => useContext(Ctx);

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { CalendarDays, Camera, Factory, FolderOpen, Languages } from 'lucide-react';
-import { Ctx, type AppCtx, type Route } from './ctx';
+import { Ctx, type AppCtx } from './ctx';
 import { setMyId, supabase } from './lib/supabase';
 import { db } from './lib/db';
 import { ensureProfile, startSync } from './lib/sync';
-import { navBack, navPush, navPushLocked } from './lib/nav';
+import { navBack, keptStack, navInit, navOpen, navPush, navTab, useNav, type Overlay, type Tab } from './lib/nav';
 import { useToast } from './lib/toast';
 import { useLive } from './lib/util';
 import { PhotoViewer } from './components/ui';
@@ -17,7 +17,6 @@ import { Translator } from './screens/Translator';
 import { CaptureSheet } from './screens/Capture';
 import { Presentation, QRScreen } from './screens/Share';
 
-type Tab = 'hoy' | 'proyectos' | 'proveedores' | 'traductor';
 const TABS: Tab[] = ['hoy', 'proyectos', 'proveedores', 'traductor'];
 
 function ToastHost() {
@@ -51,18 +50,9 @@ function Main({ userId }: { userId: string }) {
   const me = profiles.get(userId);
   const [checked, setChecked] = useState(false);
 
-  const [tab, setTab] = useState<Tab>('hoy');
-  const [stacks, setStacks] = useState<Record<Tab, Route[]>>({ hoy: [], proyectos: [], proveedores: [], traductor: [] });
-  const [capture, setCapture] = useState<{ project?: string } | null>(null);
-  const [present, setPresent] = useState<string | null>(null);
-  const [qr, setQr] = useState<string | null>(null);
-  const [viewer, setViewer] = useState<{ paths: string[]; index: number } | null>(null);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const locked = useRef(false);
-  const tabRef = useRef(tab);
-  tabRef.current = tab;
-  const stacksRef = useRef(stacks);
-  stacksRef.current = stacks;
+  useState(navInit);
+  const nav = useNav();
+  const tab = nav.tab;
 
   const draft = useLive(() => db.drafts.get('current'), [], undefined);
   const hasDraft = !!draft && (draft.photos.length > 0 || draft.note.trim() !== '');
@@ -84,48 +74,40 @@ function Main({ userId }: { userId: string }) {
       myId: userId,
       me,
       profiles,
-      push: (r) => {
-        const t = tabRef.current;
-        setStacks((s) => ({ ...s, [t]: [...s[t], r] }));
-        navPush(() => setStacks((s) => ({ ...s, [t]: s[t].slice(0, -1) })));
-      },
+      push: navPush,
       back: navBack,
       openCapture: () => {
-        const open = [...stacksRef.current[tabRef.current]].reverse().find((r) => r.kind === 'project');
-        setCapture({ project: open?.kind === 'project' ? open.slug : undefined });
-        navPush(() => setCapture(null));
+        const open = [...nav.stack].reverse().find((r) => r.kind === 'project');
+        navOpen({ kind: 'capture', project: open?.kind === 'project' ? open.slug : undefined });
       },
-      openPresent: (slug) => {
-        locked.current = true;
-        setPresent(slug);
-        navPushLocked(() => locked.current, () => setPresent(null));
-      },
-      openQR: (slug) => {
-        setQr(slug);
-        navPush(() => setQr(null));
-      },
-      openViewer: (paths, index) => {
-        setViewer({ paths, index });
-        navPush(() => setViewer(null));
-      },
-      openProfile: () => {
-        setProfileOpen(true);
-        navPush(() => setProfileOpen(false));
-      },
+      openPresent: (slug) => navOpen({ kind: 'present', slug }),
+      openQR: (slug) => navOpen({ kind: 'qr', slug }),
+      openViewer: (paths, index) => navOpen({ kind: 'viewer', paths, index }),
+      openProfile: () => navOpen({ kind: 'profile' }),
     }),
-    [userId, me, profiles],
+    [userId, me, profiles, nav.stack],
   );
 
-  const exitPresent = () => {
-    locked.current = false;
-    navBack();
+  const overlay = (o: Overlay, i: number) => {
+    switch (o.kind) {
+      case 'capture':
+        return <CaptureSheet key={i} project={o.project} onClose={navBack} />;
+      case 'viewer':
+        return <PhotoViewer key={i} paths={o.paths} index={o.index} onClose={navBack} />;
+      case 'qr':
+        return <QRScreen key={i} slug={o.slug} profile={me} onClose={navBack} />;
+      case 'profile':
+        return <ProfileSheet key={i} profile={me} myId={userId} onClose={navBack} />;
+      case 'present':
+        return <Presentation key={i} slug={o.slug} profile={me} onExit={navBack} />;
+    }
   };
 
   const root = (t: Tab) =>
     t === 'hoy' ? <Today /> : t === 'proyectos' ? <Projects /> : t === 'proveedores' ? <Suppliers /> : <Translator />;
 
   const tabBtn = (t: Tab, label: string, Icon: typeof CalendarDays) => (
-    <button className={`tab ${tab === t ? 'on' : ''}`} onClick={() => setTab(t)}>
+    <button className={`tab ${tab === t ? 'on' : ''}`} onClick={() => navTab(t)}>
       <Icon size={25} strokeWidth={tab === t ? 2.3 : 1.8} />
       <span>{label}</span>
     </button>
@@ -137,7 +119,7 @@ function Main({ userId }: { userId: string }) {
         {TABS.map((t) => (
           <div key={t} className={`tab-pane ${t === tab ? 'active' : ''}`}>
             <div className="view">{root(t)}</div>
-            {stacks[t].map((r, i) => (
+            {keptStack(t).map((r, i) => (
               <div key={`${i}-${r.kind === 'project' ? r.slug : r.id}`} className="view pushed">
                 {r.kind === 'project' ? <ProjectDetail slug={r.slug} /> : <SupplierDetail id={r.id} />}
               </div>
@@ -158,11 +140,7 @@ function Main({ userId }: { userId: string }) {
         </nav>
       </div>
 
-      {capture && <CaptureSheet project={capture.project} onClose={navBack} />}
-      {viewer && <PhotoViewer paths={viewer.paths} index={viewer.index} onClose={navBack} />}
-      {qr && <QRScreen slug={qr} profile={me} onClose={navBack} />}
-      {profileOpen && <ProfileSheet profile={me} myId={userId} onClose={navBack} />}
-      {present && <Presentation slug={present} profile={me} onExit={exitPresent} />}
+      {nav.overlays.map(overlay)}
       {checked && me && !me.name && <NameSheet profile={me} />}
       <ToastHost />
     </Ctx.Provider>

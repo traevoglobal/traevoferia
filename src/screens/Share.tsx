@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { toBlob } from 'html-to-image';
-import { Lock, QrCode, X, Copy, Share as ShareIcon } from 'lucide-react';
-import { isSet, presenterFor, PROJECT_BY_SLUG, publicUrl, setPresenter, TEAM } from '../lib/content';
+import { QrCode, X, Copy, Share as ShareIcon } from 'lucide-react';
+import { asset, isSet, presenterFor, PROJECT_BY_SLUG, projectPhotos, publicUrl, setPresenter, TEAM } from '../lib/content';
 import type { Profile, Project, TeamMember } from '../lib/types';
 import { copyText, toast } from '../lib/toast';
 import { shareOrDownload } from '../lib/util';
@@ -18,7 +18,7 @@ function useQr(url: string, width = 640) {
 }
 
 const zhTitle = (p: Project) => (isSet(p.zh.title) ? p.zh.title : p.name);
-const photosOf = (p: Project) => p.photos.filter(isSet).map((x) => (x.startsWith('/') ? x : `/${x}`));
+const photosOf = projectPhotos;
 
 function QRPanel({ project, member }: { project: Project; member: TeamMember }) {
   const src = useQr(publicUrl(project.slug, member));
@@ -71,8 +71,6 @@ export function Presentation({ slug, profile, onExit }: { slug: string; profile?
   const photos = photosOf(project);
   const [zoom, setZoom] = useState<number | null>(null);
   const [qr, setQr] = useState(false);
-  const [holding, setHolding] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const member = presenterFor(profile);
 
   useEffect(() => {
@@ -86,36 +84,12 @@ export function Presentation({ slug, profile, onExit }: { slug: string; profile?
     };
   }, []);
 
-  const start = (e: React.PointerEvent) => {
-    e.preventDefault();
-    setHolding(true);
-    timer.current = setTimeout(() => {
-      setHolding(false);
-      onExit();
-    }, 2000);
-  };
-  const cancel = () => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    setHolding(false);
-  };
-
   const t = { ...project.zh, title: zhTitle(project) };
   return (
     <div className="present" onContextMenu={(e) => e.preventDefault()}>
       <ProjectTextView t={t} photos={photos} zh onPhoto={setZoom} />
-      <button
-        className={`lock ${holding ? 'holding' : ''}`}
-        onPointerDown={start}
-        onPointerUp={cancel}
-        onPointerLeave={cancel}
-        onPointerCancel={cancel}
-        aria-label="Mantén 2 s para salir"
-      >
-        <svg viewBox="0 0 36 36">
-          <circle cx="18" cy="18" r="16" />
-        </svg>
-        <Lock size={14} />
+      <button className="present-close" onClick={onExit}>
+        <X size={18} strokeWidth={2.4} /> Salir
       </button>
       <button className="present-qr" onClick={() => setQr(true)} aria-label="QR">
         <QrCode size={26} />
@@ -234,7 +208,7 @@ export function WeChatImageSheet({ project, profile, onClose }: { project: Proje
             <div className="wx-qrs">
               {isSet(member.wechatQr) && (
                 <figure>
-                  <img src={member.wechatQr.startsWith('/') ? member.wechatQr : `/${member.wechatQr}`} alt="" />
+                  <img src={asset(member.wechatQr)} alt="" />
                   <figcaption>加微信</figcaption>
                 </figure>
               )}

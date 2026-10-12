@@ -6,6 +6,7 @@ const root = process.cwd();
 const dist = join(root, 'dist');
 if (!existsSync(dist)) throw new Error('Ejecuta primero vite build');
 
+const site = JSON.parse(readFileSync(join(root, 'content/site.json'), 'utf8'));
 const team = JSON.parse(readFileSync(join(root, 'content/team.json'), 'utf8'));
 const projects = readdirSync(join(root, 'content/projects'))
   .filter((f) => f.endsWith('.json'))
@@ -13,7 +14,7 @@ const projects = readdirSync(join(root, 'content/projects'))
 
 const isSet = (v) => typeof v === 'string' && v.trim() !== '' && v.trim().toUpperCase() !== 'TODO';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const src = (p) => (p.startsWith('http') || p.startsWith('/') ? p : `/${p}`);
+const src = (p) => (/^https?:/.test(p) ? p : site.base + p.replace(/^\//, ''));
 
 const CSS = `*{box-sizing:border-box}body{margin:0;background:#f4f4f6;color:#1a1a1a;font:17px/1.65 -apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;-webkit-text-size-adjust:100%}
 header{display:flex;align-items:center;gap:12px;padding:16px 20px;background:#fff;border-bottom:1px solid #eee}

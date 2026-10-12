@@ -1,9 +1,13 @@
 import type { Profile, Project, ProjectText, TeamMember } from './types';
 import teamData from '../../content/team.json';
+import site from '../../content/site.json';
 import { norm } from './util';
 
-/** URL base de las páginas públicas de los QR. */
-export const PUBLIC_BASE_URL = 'https://feria.traevo.net';
+/** URL base de las páginas públicas de los QR (content/site.json). */
+export const PUBLIC_BASE_URL = site.publicUrl.replace(/\/$/, '');
+
+/** Ruta de un archivo de public/ respetando el base path de GitHub Pages. */
+export const asset = (p: string) => (/^https?:/.test(p) ? p : `${import.meta.env.BASE_URL}${p.replace(/^\//, '')}`);
 
 const mods = import.meta.glob<{ default: Project }>('/content/projects/*.json', { eager: true });
 export const PROJECTS: Project[] = Object.values(mods)
@@ -14,6 +18,8 @@ export const PROJECT_BY_SLUG = new Map(PROJECTS.map((p) => [p.slug, p]));
 export const TEAM: TeamMember[] = teamData as TeamMember[];
 
 export const isSet = (v?: string) => !!v && v.trim() !== '' && v.trim().toUpperCase() !== 'TODO';
+
+export const projectPhotos = (p: Project) => p.photos.filter(isSet).map(asset);
 
 export const hasText = (t?: ProjectText) =>
   !!t && (isSet(t.title) || isSet(t.summary) || [...t.needs, ...t.requirements, ...t.questions].some(isSet));

@@ -1,12 +1,15 @@
 import { db } from './db';
-import { getMyId, supabase } from './supabase';
+import { getMyId, supabase, SUPABASE_ANON_KEY, SUPABASE_URL } from './supabase';
 import { onSynced } from './sync';
 import { updateSupplier } from './store';
 import { getPhotoBlob, photoForAI } from './photos';
 import { PROJECTS, PROJECT_BY_SLUG } from './content';
 import { TEXT_FIELDS, type Supplier } from './types';
 
-async function callAI<T>(payload: object, timeoutMs = 30_000): Promise<T> {
+type AIRoute = 'translate' | 'summarize' | 'extract';
+
+/** Llama a la Edge Function "ai-proxy" de Supabase (la clave de Gemini vive allí). */
+async function callAI<T>(route: AIRoute, payload: object, timeoutMs = 30_000): Promise<T> {
   if (!navigator.onLine) throw new Error('Sin conexión');
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -14,13 +17,14 @@ async function callAI<T>(payload: object, timeoutMs = 30_000): Promise<T> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch('/api/ai', {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/ai-proxy/${route}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
       body: JSON.stringify(payload),
       signal: ctrl.signal,
     });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 401) throw new Error('IA no autorizada: tu email no está en feria_members');
     if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
     return j as T;
   } catch (e) {
@@ -32,7 +36,7 @@ async function callAI<T>(payload: object, timeoutMs = 30_000): Promise<T> {
 }
 
 export async function translate(text: string, dir: 'es-zh' | 'zh-es'): Promise<string> {
-  return (await callAI<{ text: string }>({ mode: 'translate', text, dir })).text;
+  return (await callAI<{ text: string }>('translate', { text, dir })).text;
 }
 
 export async function conclude(slug: string, target: string, competition: string): Promise<string> {
@@ -46,7 +50,7 @@ export async function conclude(slug: string, target: string, competition: string
       siguiente: s.next_step, valoracion: s.rating, resumen: s.ai_summary, nota: s.note.slice(0, 400),
     }));
   const project = p ? { nombre: p.name, ...p.es } : { nombre: slug };
-  return (await callAI<{ text: string }>({ mode: 'conclude', project, target, competition, suppliers })).text;
+  return (await callAI<{ text: string }>('summarize', { project, target, competition, suppliers })).text;
 }
 
 type Extract = Record<(typeof TEXT_FIELDS)[number] | 'summary', string> & {
@@ -75,7 +79,7 @@ export async function classify(id: string): Promise<void> {
     const projects = PROJECTS.map((p) => ({ slug: p.slug, name: p.name, summary: p.es.summary }));
     let res: Extract;
     try {
-      res = await callAI<Extract>({ mode: 'extract', photos, note: s.note, projects });
+      res = await callAI<Extract>('extract', { photos, note: s.note, projects });
     } catch (e) {
       await updateSupplier(id, { ai_status: 'error' });
       throw e;

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { supabase, supabaseConfigured } from '../lib/supabase';
 import { saveProfile } from '../lib/sync';
-import { presenterFor, setPresenter, TEAM } from '../lib/content';
+import { asset, presenterFor, setPresenter, TEAM } from '../lib/content';
 import type { Profile } from '../lib/types';
 import { toast } from '../lib/toast';
 import { PALETTE } from '../lib/util';
@@ -25,7 +25,7 @@ export function Login() {
 
   return (
     <form className="login" onSubmit={submit}>
-      <img src="/icons/icon-192.png" alt="" className="login-logo" />
+      <img src={asset('icons/icon-192.png')} alt="" className="login-logo" />
       <h1>Traevo Feria</h1>
       <p className="muted">Feria de Cantón · 2026</p>
       {!supabaseConfigured && <p className="error">Faltan VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.</p>}

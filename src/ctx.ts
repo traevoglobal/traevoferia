@@ -1,7 +1,8 @@
 import { createContext, useContext } from 'react';
 import type { Profile } from './lib/types';
+import type { Route } from './lib/nav';
 
-export type Route = { kind: 'project'; slug: string } | { kind: 'supplier'; id: string };
+export type { Route };
 
 export interface AppCtx {
   myId: string;

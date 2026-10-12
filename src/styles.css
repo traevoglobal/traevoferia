@@ -318,15 +318,10 @@ input::placeholder, textarea::placeholder { color: var(--label3); }
 .present .ptext li { font-size: 20px; line-height: 1.6; margin: 4px 0; }
 .present .pgrid { grid-template-columns: 1fr; gap: 12px; }
 .present .pgrid img { aspect-ratio: auto; border-radius: 12px; }
-.lock {
-  position: fixed; top: calc(var(--st) + 8px); right: 8px; width: 36px; height: 36px; border: 0; border-radius: 50%;
-  background: rgba(0, 0, 0, 0.04); color: rgba(0, 0, 0, 0.28); display: grid; place-items: center; padding: 0;
-  touch-action: none; -webkit-touch-callout: none;
+.present-close {
+  position: fixed; top: calc(var(--st) + 10px); right: 12px; height: 36px; padding: 0 14px 0 10px; border: 0; border-radius: 18px;
+  background: rgba(120, 120, 128, 0.16); color: #111; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 4px;
 }
-.lock svg:first-child { position: absolute; inset: 0; width: 36px; height: 36px; transform: rotate(-90deg); }
-.lock circle { fill: none; stroke: var(--brand); stroke-width: 3; stroke-dasharray: 100.6; stroke-dashoffset: 100.6; }
-.lock.holding { color: var(--brand); }
-.lock.holding circle { transition: stroke-dashoffset 2s linear; stroke-dashoffset: 0; }
 .present-qr {
   position: fixed; right: 18px; bottom: calc(var(--sb) + 18px); width: 56px; height: 56px; border-radius: 50%;
   border: 0; background: #111; color: #fff; display: grid; place-items: center; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);

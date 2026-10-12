@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronRight, Presentation, QrCode, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { useApp } from '../ctx';
 import { db } from '../lib/db';
-import { hasText, isSet, PROJECT_BY_SLUG, PROJECTS } from '../lib/content';
+import { hasText, PROJECT_BY_SLUG, projectPhotos, PROJECTS } from '../lib/content';
 import type { Project } from '../lib/types';
 import { fmtDateTime, useLive } from '../lib/util';
 import { saveNote } from '../lib/store';
@@ -63,7 +63,7 @@ export function ProjectDetail({ slug }: { slug: string }) {
   );
   const note = useLive(() => db.notes.get(slug), [slug], undefined);
   const [thinking, setThinking] = useState(false);
-  const photos = p.photos.filter(isSet).map((x) => (x.startsWith('/') ? x : `/${x}`));
+  const photos = projectPhotos(p);
   const text = lang === 'es' ? p.es : p.zh;
 
   const runConclude = async () => {

@@ -3,7 +3,7 @@
    Atrás (gesto, botón o app) = history.back(); al llegar a una entrada se pinta lo que guarda. */
 import { useSyncExternalStore } from 'react';
 
-export type Tab = 'hoy' | 'proyectos' | 'proveedores' | 'traductor';
+export type Tab = 'hoy' | 'proyectos' | 'proveedores';
 export type Route = { kind: 'project'; slug: string } | { kind: 'supplier'; id: string };
 export type Overlay =
   | { kind: 'capture'; project?: string }
@@ -20,7 +20,7 @@ const OVERLAY_HASH: Record<Overlay['kind'], string> = {
 const ROOT: NavState = { tab: 'hoy', stack: [], overlays: [], depth: 0 };
 let state: NavState = ROOT;
 /** Pila de cada pestaña, para recuperarla al volver a ella. */
-const kept: Record<Tab, Route[]> = { hoy: [], proyectos: [], proveedores: [], traductor: [] };
+const kept: Record<Tab, Route[]> = { hoy: [], proyectos: [], proveedores: [] };
 let pendingTab: Tab | null = null;
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<() => void>();
@@ -31,7 +31,9 @@ function hashOf(s: NavState) {
 }
 
 function isNavState(v: unknown): v is NavState & { feria: 1 } {
-  return !!v && (v as { feria?: number }).feria === 1;
+  // La pestaña debe existir aún (una entrada vieja puede apuntar a una pestaña ya eliminada).
+  const s = v as { feria?: number; tab?: unknown } | null;
+  return !!s && s.feria === 1 && typeof s.tab === 'string' && s.tab in kept;
 }
 
 function set(s: NavState) {

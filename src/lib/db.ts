@@ -21,6 +21,18 @@ class FeriaDB extends Dexie {
       drafts: 'id',
       meta: 'key',
     });
+    // v2: fuera los campos de IA (si no, se reenviarían a Supabase al sincronizar).
+    this.version(2)
+      .stores({ suppliers: 'id, _dirty, created_at' })
+      .upgrade((tx) =>
+        tx
+          .table('suppliers')
+          .toCollection()
+          .modify((s: Record<string, unknown>) => {
+            delete s.ai_status;
+            delete s.ai_summary;
+          }),
+      );
   }
 }
 

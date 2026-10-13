@@ -1,9 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
-import { Camera, ChevronDown, Copy, Images, Search, Share, Sparkles, Trash2, X } from 'lucide-react';
+import { Camera, ChevronDown, Copy, Images, Search, Share, Trash2, X } from 'lucide-react';
 import { useApp } from '../ctx';
 import { db } from '../lib/db';
 import { EVENTS, PROJECTS } from '../lib/content';
-import { classify, classifyPending } from '../lib/ai';
 import { addPhotosToSupplier, updateSupplier } from '../lib/store';
 import { exportCsv } from '../lib/csv';
 import { copyText, toast } from '../lib/toast';
@@ -38,11 +37,8 @@ export function Suppliers() {
   const [ev, setEv] = useState('');
   const [who, setWho] = useState('');
   const [deal, setDeal] = useState(false);
-  const [unc, setUnc] = useState(false);
-  const [busy, setBusy] = useState(false);
 
   const live = useMemo(() => all.filter((s) => !s.deleted), [all]);
-  const pendingAI = live.filter((s) => s.ai_status !== 'done').length;
 
   const list = useMemo(() => {
     const nq = norm(q);
@@ -51,24 +47,13 @@ export function Suppliers() {
       .filter((s) => !ev || s.event === ev)
       .filter((s) => !who || s.created_by === who)
       .filter((s) => !deal || s.agreement.trim() !== '')
-      .filter((s) => !unc || s.ai_status !== 'done')
       .filter(
         (s) =>
           !nq ||
-          norm([s.company, s.company_zh, s.products, s.wechat, s.city, s.note, s.contact, s.tags.join(' '), s.ai_summary].join(' ')).includes(nq),
+          norm([s.company, s.company_zh, s.products, s.wechat, s.city, s.note, s.contact, s.tags.join(' ')].join(' ')).includes(nq),
       )
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
-  }, [live, q, proj, ev, who, deal, unc]);
-
-  const runPending = async () => {
-    setBusy(true);
-    try {
-      const r = await classifyPending();
-      toast(r.fail ? `Clasificados ${r.ok}, fallaron ${r.fail}` : `Clasificados ${r.ok}`);
-    } finally {
-      setBusy(false);
-    }
-  };
+  }, [live, q, proj, ev, who, deal]);
 
   return (
     <>
@@ -97,18 +82,7 @@ export function Suppliers() {
         <button className={`chip ${deal ? 'on' : ''}`} onClick={() => setDeal(!deal)}>
           Con algo pactado
         </button>
-        <button className={`chip ${unc ? 'on' : ''}`} onClick={() => setUnc(!unc)}>
-          Por clasificar
-        </button>
       </div>
-
-      {pendingAI > 0 && (
-        <div className="pad">
-          <button className="btn secondary" disabled={busy} onClick={runPending}>
-            <Sparkles size={18} className={busy ? 'spin' : ''} /> {busy ? 'Clasificando…' : `Clasificar pendientes (${pendingAI})`}
-          </button>
-        </div>
-      )}
 
       <div className="group">
         <div className="group-title">{list.length} proveedores</div>
@@ -129,7 +103,6 @@ export function Suppliers() {
 export function SupplierDetail({ id }: { id: string }) {
   const { back, openViewer } = useApp();
   const s = useLive<LocalSupplier | false | null>(() => db.suppliers.get(id).then((x) => x ?? false), [id], null);
-  const [aiBusy, setAiBusy] = useState(false);
   const [adding, setAdding] = useState(0);
   const cam = useRef<HTMLInputElement>(null);
   const gal = useRef<HTMLInputElement>(null);
@@ -167,17 +140,6 @@ export function SupplierDetail({ id }: { id: string }) {
     }
   };
 
-  const reclassify = async () => {
-    setAiBusy(true);
-    try {
-      await classify(id);
-      toast('Clasificado');
-    } catch (e) {
-      toast((e as Error).message);
-    } finally {
-      setAiBusy(false);
-    }
-  };
 
   const remove = async () => {
     if (!confirm('¿Borrar este proveedor?')) return;
@@ -289,21 +251,6 @@ export function SupplierDetail({ id }: { id: string }) {
         <div className="group-title">Nota original</div>
         <div className="list">
           <EditField label="Nota" multiline value={s.note} onSave={(v) => set({ note: v })} />
-        </div>
-      </div>
-
-      <div className="group">
-        <div className="group-title">Resumen IA</div>
-        <div className="list card-pad">
-          <p className="ai-text">
-            {s.ai_summary ||
-              (s.ai_status === 'error' ? 'La clasificación falló.' : s.ai_status === 'pending' ? 'Pendiente de clasificar.' : '—')}
-          </p>
-        </div>
-        <div className="pad">
-          <button className="btn secondary" disabled={aiBusy} onClick={reclassify}>
-            <Sparkles size={18} className={aiBusy ? 'spin' : ''} /> {aiBusy ? 'Clasificando…' : 'Volver a clasificar'}
-          </button>
         </div>
       </div>
 

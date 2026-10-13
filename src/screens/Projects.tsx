@@ -1,13 +1,11 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, Presentation, QrCode, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { ChevronRight, Presentation, QrCode, Image as ImageIcon } from 'lucide-react';
 import { useApp } from '../ctx';
 import { db } from '../lib/db';
 import { hasText, PROJECT_BY_SLUG, projectPhotos, PROJECTS } from '../lib/content';
 import type { Project } from '../lib/types';
 import { fmtDateTime, useLive } from '../lib/util';
 import { saveNote } from '../lib/store';
-import { conclude } from '../lib/ai';
-import { toast } from '../lib/toast';
 import { EditField, Empty, NavBar, Person, Segmented, SyncPill } from '../components/ui';
 import { SupplierRow } from '../components/SupplierRow';
 import { WeChatImageSheet } from './Share';
@@ -62,21 +60,8 @@ export function ProjectDetail({ slug }: { slug: string }) {
     [all, slug],
   );
   const note = useLive(() => db.notes.get(slug), [slug], undefined);
-  const [thinking, setThinking] = useState(false);
   const photos = projectPhotos(p);
   const text = lang === 'es' ? p.es : p.zh;
-
-  const runConclude = async () => {
-    setThinking(true);
-    try {
-      const out = await conclude(slug, note?.target ?? '', note?.competition ?? '');
-      await saveNote(slug, { conclusions: out });
-    } catch (e) {
-      toast((e as Error).message);
-    } finally {
-      setThinking(false);
-    }
-  };
 
   return (
     <>
@@ -158,11 +143,6 @@ export function ProjectDetail({ slug }: { slug: string }) {
                 onSave={(v) => saveNote(slug, { competition: v })}
               />
             </div>
-          </div>
-          <div className="pad">
-            <button className="btn primary" disabled={thinking} onClick={runConclude}>
-              <Sparkles size={20} className={thinking ? 'spin' : ''} /> {thinking ? 'Pensando…' : 'Sacar conclusiones'}
-            </button>
           </div>
           <div className="group">
             <div className="group-title">Conclusiones</div>

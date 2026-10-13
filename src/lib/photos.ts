@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db } from './db';
 import { supabase } from './supabase';
-import { blobToBase64 } from './util';
 
 async function loadImage(blob: Blob): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(blob);
@@ -40,12 +39,6 @@ export async function compressPhoto(file: Blob): Promise<{ blob: Blob; thumb: Bl
   const blob = await drawToJpeg(img, 1600, 0.8);
   const thumb = await drawToJpeg(img, 320, 0.7);
   return { blob, thumb };
-}
-
-/** Foto reducida a 1024px en base64 para la IA. */
-export async function photoForAI(blob: Blob): Promise<string> {
-  const img = await loadImage(blob);
-  return blobToBase64(await drawToJpeg(img, 1024, 0.75));
 }
 
 /* ---------- URLs firmadas (por lotes y cacheadas) ---------- */

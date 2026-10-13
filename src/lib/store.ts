@@ -12,8 +12,7 @@ export function emptySupplier(id: string, me: string, now: string): LocalSupplie
     company: '', company_zh: '', contact: '', role: '', wechat: '', phone: '', email: '', web: '', booth: '',
     city: '', kind: '', products: '', price: '', moq: '', incoterm: '', lead_time: '', samples: '',
     agreement: '', next_step: '',
-    project_ids: [], tags: [], rating: 0, photos: [], event: '', note: '',
-    ai_status: 'pending', ai_summary: '', deleted: false,
+    project_ids: [], tags: [], rating: 0, photos: [], event: '', note: '', deleted: false,
     created_by: me, updated_by: me, created_at: now, updated_at: now, _dirty: 1,
   };
 }

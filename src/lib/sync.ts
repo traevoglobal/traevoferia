@@ -54,8 +54,6 @@ export function normalizeSupplier(r: any): LocalSupplier {
     photos: Array.isArray(r.photos) ? r.photos.filter((p: { path?: string }) => p?.path) : [],
     event: str(r.event),
     note: str(r.note),
-    ai_status: r.ai_status === 'done' || r.ai_status === 'error' ? r.ai_status : 'pending',
-    ai_summary: str(r.ai_summary),
     deleted: !!r.deleted,
     created_by: str(r.created_by),
     updated_by: str(r.updated_by),

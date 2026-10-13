@@ -44,15 +44,6 @@ export function isToday(iso: string): boolean {
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
 }
 
-export function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result).split(',')[1] ?? '');
-    r.onerror = () => reject(r.error);
-    r.readAsDataURL(blob);
-  });
-}
-
 /** Suscripción reactiva a una consulta de Dexie. */
 export function useLive<T>(fn: () => T | Promise<T>, deps: unknown[], initial: T): T {
   const [value, setValue] = useState<T>(initial);

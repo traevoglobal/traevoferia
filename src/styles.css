@@ -128,7 +128,6 @@ input::placeholder, textarea::placeholder { color: var(--label3); }
 .count { color: var(--label2); font-variant-numeric: tabular-nums; }
 .row.meta { font-size: 15px; gap: 8px; }
 .row.meta .muted { font-size: 13px; }
-.row.hist .muted { font-size: 15px; }
 .select { border: 0; background: none; color: var(--label2); text-align: right; font-size: 17px; max-width: 60%; -webkit-appearance: none; appearance: none; text-align-last: right; }
 .empty { text-align: center; color: var(--label2); padding: 28px 24px; font-size: 15px; line-height: 1.45; }
 .list .empty { padding: 20px 8px; }
@@ -152,7 +151,6 @@ input::placeholder, textarea::placeholder { color: var(--label3); }
 .btn.secondary { background: var(--card); color: var(--blue); }
 .btn.plain { background: none; height: 44px; }
 .btn.danger { color: var(--red); }
-.btn.narrow { width: auto; padding: 0 18px; flex: none; }
 
 /* ---------- Chips, segmentado, búsqueda ---------- */
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 14px; scrollbar-width: none; }
@@ -169,8 +167,6 @@ input::placeholder, textarea::placeholder { color: var(--label3); }
 .seg { display: flex; background: var(--fill); border-radius: 9px; padding: 2px; margin: 0 16px 16px; }
 .seg button { flex: 1; height: 32px; border: 0; background: none; border-radius: 7px; font-size: 14px; font-weight: 500; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .seg button.on { background: var(--seg-on); font-weight: 600; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12), 0 3px 1px rgba(0, 0, 0, 0.04); }
-.dir-row { display: flex; align-items: center; gap: 4px; padding-right: 10px; }
-.dir-row .seg { flex: 1; margin-right: 0; }
 .search { display: flex; align-items: center; gap: 6px; margin: 0 16px 12px; height: 38px; padding: 0 8px; border-radius: 10px; background: var(--fill); color: var(--label2); }
 .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; -webkit-appearance: none; appearance: none; }
 .search input::-webkit-search-cancel-button { display: none; }
@@ -211,7 +207,6 @@ input::placeholder, textarea::placeholder { color: var(--label3); }
 .ptext ul { margin: 0; padding-left: 20px; line-height: 1.5; }
 .pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 14px; }
 .pgrid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--fill); }
-.ai-text { margin: 0; line-height: 1.45; white-space: pre-wrap; }
 
 /* ---------- Ficha: tira de fotos ---------- */
 .strip { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 16px; scrollbar-width: none; }
@@ -289,10 +284,6 @@ input::placeholder, textarea::placeholder { color: var(--label3); }
 .qr-foot { margin-top: 28px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; --fill: rgba(120, 120, 128, 0.12); --seg-on: #fff; }
 .qr-foot .seg { width: 100%; max-width: 420px; color: #111; }
 .qr-foot .link { color: #007aff; }
-.show-text { display: flex; align-items: center; justify-content: center; padding: calc(var(--st) + 60px) 24px calc(var(--sb) + 40px); background: #fff; color: #000; }
-.show-text div { font-size: 34px; line-height: 1.45; font-weight: 600; white-space: pre-wrap; word-break: break-word; }
-.show-text div.zh { font-size: 44px; }
-.tr-input { min-height: 96px; font-size: 19px !important; }
 .tr-out { font-size: 22px; line-height: 1.45; white-space: pre-wrap; -webkit-user-select: text; user-select: text; }
 .tr-out.zh { font-size: 28px; }
 

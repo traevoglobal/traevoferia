@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { CalendarDays, Camera, Factory, FolderOpen, Languages } from 'lucide-react';
+import { CalendarDays, Camera, Factory, FolderOpen } from 'lucide-react';
 import { Ctx, type AppCtx } from './ctx';
-import { setMyId, supabase } from './lib/supabase';
+import { AUTH_STORAGE_KEY, setMyId, supabase } from './lib/supabase';
 import { db } from './lib/db';
 import { ensureProfile, startSync } from './lib/sync';
 import { navBack, keptStack, navInit, navOpen, navPush, navTab, useNav, type Overlay, type Tab } from './lib/nav';
@@ -13,11 +13,21 @@ import { Login, NameSheet, ProfileSheet } from './screens/Auth';
 import { Today } from './screens/Today';
 import { ProjectDetail, Projects } from './screens/Projects';
 import { SupplierDetail, Suppliers } from './screens/Suppliers';
-import { Translator } from './screens/Translator';
 import { CaptureSheet } from './screens/Capture';
 import { Presentation, QRScreen } from './screens/Share';
 
-const TABS: Tab[] = ['hoy', 'proyectos', 'proveedores', 'traductor'];
+const TABS: Tab[] = ['hoy', 'proyectos', 'proveedores'];
+
+/** Sesión guardada en el móvil. supabase-js la da por nula si el token caducó y no hay red para renovarlo,
+    pero no la borra: la usamos para seguir captando sin conexión. Se renueva sola al volver la red. */
+function storedSession(): Session | null {
+  try {
+    const s = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) ?? 'null') as Session | null;
+    return s?.user?.id && s.refresh_token ? s : null;
+  } catch {
+    return null;
+  }
+}
 
 function ToastHost() {
   const msg = useToast();
@@ -25,10 +35,11 @@ function ToastHost() {
 }
 
 export default function App() {
-  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  // Arranque inmediato con la sesión guardada: sin red, getSession tarda ~20 s en rendirse.
+  const [session, setSession] = useState<Session | null | undefined>(() => storedSession() ?? undefined);
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? storedSession()));
+    const { data } = supabase.auth.onAuthStateChange((e, s) => setSession(s ?? (e === 'SIGNED_OUT' ? null : storedSession())));
     return () => data.subscription.unsubscribe();
   }, []);
 
@@ -103,8 +114,7 @@ function Main({ userId }: { userId: string }) {
     }
   };
 
-  const root = (t: Tab) =>
-    t === 'hoy' ? <Today /> : t === 'proyectos' ? <Projects /> : t === 'proveedores' ? <Suppliers /> : <Translator />;
+  const root = (t: Tab) => (t === 'hoy' ? <Today /> : t === 'proyectos' ? <Projects /> : <Suppliers />);
 
   const tabBtn = (t: Tab, label: string, Icon: typeof CalendarDays) => (
     <button className={`tab ${tab === t ? 'on' : ''}`} onClick={() => navTab(t)}>
@@ -136,7 +146,6 @@ function Main({ userId }: { userId: string }) {
             </span>
           </button>
           {tabBtn('proveedores', 'Proveedores', Factory)}
-          {tabBtn('traductor', 'Traductor', Languages)}
         </nav>
       </div>
 

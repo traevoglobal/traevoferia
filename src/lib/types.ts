@@ -8,8 +8,6 @@ export const TEXT_FIELDS = [
 ] as const;
 export type TextField = (typeof TEXT_FIELDS)[number];
 
-export type AiStatus = 'pending' | 'done' | 'error';
-
 export type Supplier = Record<TextField, string> & {
   id: string;
   project_ids: string[];
@@ -18,8 +16,6 @@ export type Supplier = Record<TextField, string> & {
   photos: PhotoRef[];
   event: string;
   note: string;
-  ai_status: AiStatus;
-  ai_summary: string;
   deleted: boolean;
   created_by: string;
   updated_by: string;

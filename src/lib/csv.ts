@@ -28,7 +28,6 @@ const COLS: [string, (s: LocalSupplier, who: Map<string, Profile>) => string | n
   ['Valoración', (s) => s.rating],
   ['Feria', (s) => s.event],
   ['Nota', (s) => s.note],
-  ['Resumen IA', (s) => s.ai_summary],
   ['Fotos', (s) => s.photos.length],
   ['Subido por', (s, who) => who.get(s.created_by)?.name ?? ''],
   ['Fecha', (s) => new Date(s.created_at).toLocaleString('es-ES')],

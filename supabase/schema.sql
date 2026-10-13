@@ -8,7 +8,7 @@ do $$
 begin
   if to_regclass('public.suppliers') is not null and not exists (
     select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'suppliers' and column_name = 'ai_status') then
+    where table_schema = 'public' and table_name = 'suppliers' and column_name = 'project_ids') then
     raise exception 'Ya existe public.suppliers y no es de Traevo Feria. No se ha tocado nada.';
   end if;
   if to_regclass('public.project_notes') is not null and not exists (
@@ -108,8 +108,6 @@ create table if not exists public.suppliers (
   photos jsonb not null default '[]'::jsonb,
   event text not null default '',
   note text not null default '',
-  ai_status text not null default 'pending',
-  ai_summary text not null default '',
   deleted boolean not null default false,
   created_by uuid references auth.users(id) on delete set null,
   updated_by uuid references auth.users(id) on delete set null,
@@ -198,22 +196,9 @@ begin
   end if;
 end $$;
 
--- 8) Caché de IA (la usa la Edge Function "ai-proxy" con el token del usuario)
-create table if not exists public.ai_cache (
-  hash text primary key,  -- sha256 de "translate:<dir>:<texto>"
-  kind text not null default '',
-  result text not null,
-  created_at timestamptz not null default now()
-);
-alter table public.ai_cache enable row level security;
-revoke all on public.ai_cache from anon;
-grant select, insert on public.ai_cache to authenticated;
-drop policy if exists feria_ai_cache_select on public.ai_cache;
-create policy feria_ai_cache_select on public.ai_cache
-  for select to authenticated using ((select public.feria_is_member()));
-drop policy if exists feria_ai_cache_insert on public.ai_cache;
-create policy feria_ai_cache_insert on public.ai_cache
-  for insert to authenticated with check ((select public.feria_is_member()));
+-- 8) Sin IA: limpieza de lo que dejó la versión anterior (no hace nada en una base nueva)
+alter table public.suppliers drop column if exists ai_status, drop column if exists ai_summary;
+drop table if exists public.ai_cache;
 
 -- 9) Miembros. Ejecutar APARTE con vuestros emails de acceso (no se guardan en el repo):
 --   insert into public.feria_members (email) values (lower('EMAIL_JAVI')), (lower('EMAIL_RAFA')) on conflict do nothing;

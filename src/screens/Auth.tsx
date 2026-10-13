@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { LogOut } from 'lucide-react';
-import { supabase, supabaseConfigured } from '../lib/supabase';
+import { AUTH_STORAGE_KEY, supabase, supabaseConfigured } from '../lib/supabase';
 import { saveProfile } from '../lib/sync';
 import { asset, presenterFor, setPresenter, TEAM } from '../lib/content';
 import type { Profile } from '../lib/types';
@@ -107,7 +107,13 @@ export function ProfileSheet({ profile, myId, onClose }: { profile?: Profile; my
   const logout = async () => {
     if (!confirm('¿Cerrar sesión? Lo pendiente se queda guardado en este móvil.')) return;
     onClose();
-    await supabase.auth.signOut();
+    // Sin red y con el token caducado, supabase-js no borra la sesión guardada (y tarda ~20 s en rendirse): la borramos aquí.
+    const { error } = navigator.onLine ? await supabase.auth.signOut() : { error: true };
+    if (error) {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      history.replaceState(null, '', location.pathname);
+      location.reload();
+    }
   };
   return (
     <Sheet title="Perfil" onClose={onClose} right={<button className="link" onClick={onClose}>OK</button>}>

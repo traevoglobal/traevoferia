@@ -167,6 +167,41 @@ export function usePhotoUrl(path: string | undefined, thumb = false): string | u
   return url;
 }
 
+/** URLs locales (blob:) de fotos del bucket para componer imágenes (长图). Se piden en modo CORS con una
+    URL propia (&cors=1): la caché guarda copias opacas de las <img> que no sirven para componer.
+    undefined mientras cargan; '' si alguna no está disponible. */
+export function useComposableUrls(paths: string[]): string[] | undefined {
+  const key = paths.join('\n');
+  const [urls, setUrls] = useState<string[]>();
+  useEffect(() => {
+    setUrls(undefined);
+    let cancelled = false;
+    const made: string[] = [];
+    void Promise.all(
+      (key ? key.split('\n') : []).map(async (p) => {
+        try {
+          const local = await db.photos.get(p);
+          const res = local ? null : await fetch(`${await getSignedUrl(p)}&cors=1`);
+          if (res && !res.ok) throw new Error(`Foto no disponible (${res.status})`);
+          const u = URL.createObjectURL(local ? local.blob : await res!.blob());
+          if (cancelled) URL.revokeObjectURL(u);
+          else made.push(u);
+          return u;
+        } catch {
+          return '';
+        }
+      }),
+    ).then((u) => {
+      if (!cancelled) setUrls(u);
+    });
+    return () => {
+      cancelled = true;
+      made.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [key]);
+  return urls;
+}
+
 /** URL de un blob suelto (borradores). */
 export function useBlobUrl(blob?: Blob): string | undefined {
   const [url, setUrl] = useState<string>();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { liveQuery } from 'dexie';
 
 export function uuid(): string {
@@ -42,6 +42,32 @@ export function isToday(iso: string): boolean {
   const d = new Date(iso);
   const n = new Date();
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+}
+
+/** Estado guardado en este móvil (localStorage). Si no hay almacenamiento, funciona solo en memoria. */
+export function useStored<T>(key: string, initial: T): [T, (next: T | ((prev: T) => T)) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw === null ? initial : (JSON.parse(raw) as T);
+    } catch {
+      return initial;
+    }
+  });
+  const set = useCallback(
+    (next: T | ((prev: T) => T)) =>
+      setValue((prev) => {
+        const v = typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
+        try {
+          localStorage.setItem(key, JSON.stringify(v));
+        } catch {
+          /* sin espacio o modo privado: queda en memoria */
+        }
+        return v;
+      }),
+    [key],
+  );
+  return [value, set];
 }
 
 /** Suscripción reactiva a una consulta de Dexie. */

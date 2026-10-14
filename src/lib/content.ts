@@ -1,40 +1,79 @@
-import type { Profile, Project, ProjectText, TeamMember } from './types';
-import teamData from '../../content/team.json';
-import site from '../../content/site.json';
+import { useSyncExternalStore } from 'react';
+import type { ContentRow, Horario, Profile, Project, ProjectText, TeamMember } from './types';
+import { db } from './db';
 import { norm } from './util';
-
-/** URL base de las páginas públicas de los QR (content/site.json). */
-export const PUBLIC_BASE_URL = site.publicUrl.replace(/\/$/, '');
 
 /** Ruta de un archivo de public/ respetando el base path de GitHub Pages. */
 export const asset = (p: string) => (/^https?:/.test(p) ? p : `${import.meta.env.BASE_URL}${p.replace(/^\//, '')}`);
 
-const mods = import.meta.glob<{ default: Project }>('/content/projects/*.json', { eager: true });
-export const PROJECTS: Project[] = Object.values(mods)
-  .map((m) => m.default)
-  .sort((a, b) => a.order - b.order);
-export const PROJECT_BY_SLUG = new Map(PROJECTS.map((p) => [p.slug, p]));
+/* Contenido privado (proyectos, equipo, horario): vive en Supabase (tabla feria_content, solo miembros)
+   y en Dexie para usarlo sin red. Nada de esto está en el repo ni en la web. Se lee como variables
+   vivas; Main se vuelve a pintar cuando cambian (useContentVersion). */
+export let PROJECTS: Project[] = [];
+export let PROJECT_BY_SLUG = new Map<string, Project>();
+export let TEAM: TeamMember[] = [];
+export let HORARIO: Horario | null = null;
 
-export const TEAM: TeamMember[] = teamData as TeamMember[];
+let version = 0;
+const listeners = new Set<() => void>();
+
+function apply(rows: ContentRow[]) {
+  const get = <T>(key: string) => rows.find((r) => r.key === key)?.data as T | undefined;
+  PROJECTS = [...(get<Project[]>('projects') ?? [])].sort((a, b) => a.order - b.order);
+  PROJECT_BY_SLUG = new Map(PROJECTS.map((p) => [p.slug, p]));
+  TEAM = get<TeamMember[]>('team') ?? [];
+  HORARIO = get<Horario>('horario') ?? null;
+  version++;
+  listeners.forEach((l) => l());
+}
+
+/** Carga lo guardado en este móvil (antes de pintar la app). */
+export async function loadContent() {
+  apply(await db.content.toArray());
+}
+
+/** Guarda lo descargado de Supabase, solo si ha cambiado. */
+export async function storeContent(rows: ContentRow[]) {
+  const cur = await db.content.toArray();
+  const same = cur.length === rows.length && rows.every((r) => cur.some((c) => c.key === r.key && c.updated_at === r.updated_at));
+  if (same) return;
+  await db.transaction('rw', db.content, async () => {
+    await db.content.clear();
+    await db.content.bulkPut(rows);
+  });
+  apply(rows);
+}
+
+export const useContentVersion = () =>
+  useSyncExternalStore(
+    (f) => {
+      listeners.add(f);
+      return () => {
+        listeners.delete(f);
+      };
+    },
+    () => version,
+  );
 
 export const isSet = (v?: string) => !!v && v.trim() !== '' && v.trim().toUpperCase() !== 'TODO';
 
-export const projectPhotos = (p: Project) => p.photos.filter(isSet).map(asset);
+/** Fotos del proyecto: rutas en el bucket privado "photos" (content/projects/<slug>/…). */
+export const projectPhotos = (p: Project) => p.photos.filter(isSet);
 
 export const hasText = (t?: ProjectText) =>
   !!t && (isSet(t.title) || isSet(t.summary) || [...t.needs, ...t.requirements, ...t.questions].some(isSet));
+
+const NOBODY: TeamMember = { slug: '', name: 'Traevo Global', wechat: '', wechatQr: '', whatsapp: '', email: '' };
 
 export function presenterFor(profile?: Profile): TeamMember {
   const stored = localStorage.getItem('feria.presenter');
   const byStored = TEAM.find((t) => t.slug === stored);
   if (byStored) return byStored;
   const n = norm(profile?.name ?? '');
-  return TEAM.find((t) => n && (n.startsWith(t.slug) || n.startsWith(norm(t.name)))) ?? TEAM[0];
+  return TEAM.find((t) => n && (n.startsWith(t.slug) || n.startsWith(norm(t.name)))) ?? TEAM[0] ?? NOBODY;
 }
 
 export const setPresenter = (slug: string) => localStorage.setItem('feria.presenter', slug);
-
-export const publicUrl = (slug: string, member: TeamMember) => `${PUBLIC_BASE_URL}/p/${slug}/${member.slug}/`;
 
 /* Ferias: se asignan por fecha; fuera de fechas, la última elegida. */
 export const EVENTS: { label: string; start?: string; end?: string }[] = [

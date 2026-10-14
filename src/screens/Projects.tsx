@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, Presentation, QrCode, Image as ImageIcon } from 'lucide-react';
+import { ChevronRight, Presentation, Image as ImageIcon } from 'lucide-react';
 import { useApp } from '../ctx';
 import { db } from '../lib/db';
 import { hasText, PROJECT_BY_SLUG, projectPhotos, PROJECTS } from '../lib/content';
@@ -42,15 +42,21 @@ export function Projects() {
     <>
       <NavBar center={<SyncPill />} />
       <h1 className="large-title">Proyectos</h1>
-      {section('traevo', 'Traevo')}
-      {section('clientes', 'Clientes')}
+      {PROJECTS.length ? (
+        <>
+          {section('traevo', 'Traevo')}
+          {section('clientes', 'Clientes')}
+        </>
+      ) : (
+        <Empty>Los proyectos se descargan al sincronizar. Abre la app una vez con conexión y quedarán guardados en el móvil.</Empty>
+      )}
     </>
   );
 }
 
 export function ProjectDetail({ slug }: { slug: string }) {
-  const { openPresent, openQR, openViewer, me } = useApp();
-  const p = PROJECT_BY_SLUG.get(slug)!;
+  const { openPresent, openViewer, me } = useApp();
+  const p = PROJECT_BY_SLUG.get(slug);
   const [tab, setTab] = useState<'exp' | 'sup' | 'ana'>('exp');
   const [lang, setLang] = useState<'es' | 'zh'>('es');
   const [wx, setWx] = useState(false);
@@ -60,6 +66,13 @@ export function ProjectDetail({ slug }: { slug: string }) {
     [all, slug],
   );
   const note = useLive(() => db.notes.get(slug), [slug], undefined);
+  if (!p)
+    return (
+      <>
+        <NavBar back="Proyectos" />
+        <Empty>Proyecto no disponible.</Empty>
+      </>
+    );
   const photos = projectPhotos(p);
   const text = lang === 'es' ? p.es : p.zh;
 
@@ -80,12 +93,9 @@ export function ProjectDetail({ slug }: { slug: string }) {
 
       {tab === 'exp' && (
         <>
-          <div className="pad row-btns">
+          <div className="pad">
             <button className="btn primary" onClick={() => openPresent(slug)}>
               <Presentation size={20} /> Presentar
-            </button>
-            <button className="btn secondary" onClick={() => openQR(slug)}>
-              <QrCode size={20} /> QR
             </button>
           </div>
           <div className="pad">

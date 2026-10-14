@@ -4,6 +4,7 @@ import { db, getMeta, setMeta } from './db';
 import { getMyId, supabase } from './supabase';
 import { TEXT_FIELDS, type LocalNote, type LocalSupplier, type Profile } from './types';
 import { useLive } from './util';
+import { storeContent } from './content';
 
 /* ---------- Estado ---------- */
 type Status = { online: boolean; syncing: boolean; error: string | null };
@@ -237,6 +238,13 @@ async function pullNotes() {
 let running: Promise<void> | null = null;
 let again = false;
 
+/** Contenido privado: pocas filas, se descarga entero y solo se guarda si cambió. */
+async function pullContent() {
+  const { data, error } = await supabase.from('feria_content').select('key, data, updated_at');
+  if (error) throw error;
+  await storeContent(data ?? []);
+}
+
 export function syncNow(): Promise<void> {
   if (running) {
     again = true;
@@ -270,6 +278,7 @@ async function syncOnce() {
     const e1 = await pushSuppliers();
     const e2 = await pushNotes();
     await pullProfiles().catch(() => {});
+    await pullContent().catch((e) => console.warn('Contenido privado:', e));
     await pullSuppliers();
     await pullNotes();
     setStatus({ syncing: false, error: e1 ?? e2 });

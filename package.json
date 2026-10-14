@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit -p tsconfig.json && vite build && node scripts/build-public.mjs",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "content:sql": "node scripts/content-sql.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

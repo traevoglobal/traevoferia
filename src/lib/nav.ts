@@ -3,24 +3,23 @@
    Atrás (gesto, botón o app) = history.back(); al llegar a una entrada se pinta lo que guarda. */
 import { useSyncExternalStore } from 'react';
 
-export type Tab = 'hoy' | 'proyectos' | 'proveedores';
+export type Tab = 'hoy' | 'proyectos' | 'proveedores' | 'horario';
 export type Route = { kind: 'project'; slug: string } | { kind: 'supplier'; id: string };
 export type Overlay =
-  | { kind: 'capture'; project?: string }
+  | { kind: 'capture'; project?: string; tag?: string }
   | { kind: 'present'; slug: string }
-  | { kind: 'qr'; slug: string }
   | { kind: 'viewer'; paths: string[]; index: number }
   | { kind: 'profile' };
 export type NavState = { tab: Tab; stack: Route[]; overlays: Overlay[]; depth: number };
 
 const OVERLAY_HASH: Record<Overlay['kind'], string> = {
-  capture: 'captar', present: 'presentar', qr: 'qr', viewer: 'foto', profile: 'perfil',
+  capture: 'captar', present: 'presentar', viewer: 'foto', profile: 'perfil',
 };
 
 const ROOT: NavState = { tab: 'hoy', stack: [], overlays: [], depth: 0 };
 let state: NavState = ROOT;
 /** Pila de cada pestaña, para recuperarla al volver a ella. */
-const kept: Record<Tab, Route[]> = { hoy: [], proyectos: [], proveedores: [] };
+const kept: Record<Tab, Route[]> = { hoy: [], proyectos: [], proveedores: [], horario: [] };
 let pendingTab: Tab | null = null;
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<() => void>();

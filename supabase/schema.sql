@@ -200,6 +200,20 @@ end $$;
 alter table public.suppliers drop column if exists ai_status, drop column if exists ai_summary;
 drop table if exists public.ai_cache;
 
+-- 8b) Contenido privado de la app (proyectos, equipo, horario). Solo lectura para miembros;
+--     se escribe desde el SQL Editor con private/content.sql (npm run content:sql). Nunca en el repo.
+create table if not exists public.feria_content (
+  key text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.feria_content enable row level security;
+revoke all on public.feria_content from anon;
+grant select on public.feria_content to authenticated;
+drop policy if exists feria_content_select on public.feria_content;
+create policy feria_content_select on public.feria_content
+  for select to authenticated using ((select public.feria_is_member()));
+
 -- 9) Miembros. Ejecutar APARTE con vuestros emails de acceso (no se guardan en el repo):
 --   insert into public.feria_members (email) values (lower('EMAIL_JAVI')), (lower('EMAIL_RAFA')) on conflict do nothing;
 do $$

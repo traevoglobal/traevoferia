@@ -1,4 +1,5 @@
 import { isSet } from '../lib/content';
+import { PhotoImg } from './ui';
 import type { ProjectText } from '../lib/types';
 
 export function ProjectTextView({ t, photos, onPhoto, zh }: { t: ProjectText; photos: string[]; onPhoto?: (i: number) => void; zh?: boolean }) {
@@ -22,8 +23,8 @@ export function ProjectTextView({ t, photos, onPhoto, zh }: { t: ProjectText; ph
       {list(zh ? '我们想了解' : 'Preguntas', t.questions)}
       {photos.length > 0 && (
         <div className="pgrid">
-          {photos.map((src, i) => (
-            <img key={src} src={src.startsWith('/') ? src : `/${src}`} alt="" onClick={() => onPhoto?.(i)} loading="lazy" />
+          {photos.map((path, i) => (
+            <PhotoImg key={path} path={path} onClick={() => onPhoto?.(i)} />
           ))}
         </div>
       )}

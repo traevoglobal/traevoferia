@@ -27,6 +27,7 @@ export async function saveCapture(draft: Draft): Promise<string> {
     ...emptySupplier(id, me, now),
     note: draft.note.trim(),
     project_ids: draft.project_ids,
+    tags: draft.tags ?? [],
     event: draft.event,
     photos: photos.map((p) => ({ path: p.path })),
   };

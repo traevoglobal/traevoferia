@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Draft, LocalNote, LocalPhoto, LocalSupplier, Profile } from './types';
+import type { ContentRow, Draft, LocalNote, LocalPhoto, LocalSupplier, Profile } from './types';
 
 class FeriaDB extends Dexie {
   suppliers!: Table<LocalSupplier, string>;
@@ -8,6 +8,7 @@ class FeriaDB extends Dexie {
   profiles!: Table<Profile, string>;
   signed!: Table<{ path: string; url: string; exp: number }, string>;
   drafts!: Table<Draft, string>;
+  content!: Table<ContentRow, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
   constructor() {
@@ -33,6 +34,8 @@ class FeriaDB extends Dexie {
             delete s.ai_summary;
           }),
       );
+    // v3: contenido privado (proyectos, equipo, horario) para usarlo sin red.
+    this.version(3).stores({ content: 'key' });
   }
 }
 

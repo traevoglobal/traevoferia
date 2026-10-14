@@ -7,3 +7,4 @@ dev-dist
 .netlify
 *.log
 .DS_Store
+private/

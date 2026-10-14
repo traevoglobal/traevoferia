@@ -21,7 +21,7 @@ function Thumb({ p, onRemove }: { p: DraftPhoto; onRemove: () => void }) {
   );
 }
 
-export function CaptureSheet({ project, onClose }: { project?: string; onClose: () => void }) {
+export function CaptureSheet({ project, tag, onClose }: { project?: string; tag?: string; onClose: () => void }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -37,7 +37,7 @@ export function CaptureSheet({ project, onClose }: { project?: string; onClose: 
       const has = !!d && (d.photos.length > 0 || d.note.trim() !== '');
       const base: Draft = has
         ? d!
-        : { id: 'current', photos: [], note: '', project_ids: project ? [project] : [], event: currentEvent() };
+        : { id: 'current', photos: [], note: '', project_ids: project ? [project] : [], event: currentEvent(), tags: tag ? [tag] : [] };
       ref.current = base;
       setDraft(base);
     })();
@@ -47,7 +47,7 @@ export function CaptureSheet({ project, onClose }: { project?: string; onClose: 
         if (ref.current) void db.drafts.put(ref.current);
       }
     };
-  }, [project]);
+  }, [project, tag]);
 
   const update = (fn: (d: Draft) => Draft, persist: 'now' | 'later' = 'now') => {
     if (!ref.current) return;
@@ -179,6 +179,15 @@ export function CaptureSheet({ project, onClose }: { project?: string; onClose: 
                   ))}
                 </select>
               </label>
+              {draft.tags?.map((t) => (
+                <div className="row" key={t}>
+                  <span className="grow">Franja</span>
+                  <span className="muted ellipsis">{t}</span>
+                  <button className="icon-btn tiny" onClick={() => update((d) => ({ ...d, tags: d.tags?.filter((x) => x !== t) }))} aria-label="Quitar franja">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
 

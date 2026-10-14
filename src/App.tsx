@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { CalendarDays, Camera, Factory, FolderOpen } from 'lucide-react';
+import { CalendarDays, Camera, Clock, Factory, FolderOpen } from 'lucide-react';
 import { Ctx, type AppCtx } from './ctx';
 import { AUTH_STORAGE_KEY, setMyId, supabase } from './lib/supabase';
 import { db } from './lib/db';
@@ -8,15 +8,17 @@ import { ensureProfile, startSync } from './lib/sync';
 import { navBack, keptStack, navInit, navOpen, navPush, navTab, useNav, type Overlay, type Tab } from './lib/nav';
 import { useToast } from './lib/toast';
 import { useLive } from './lib/util';
+import { loadContent, useContentVersion } from './lib/content';
 import { PhotoViewer } from './components/ui';
 import { Login, NameSheet, ProfileSheet } from './screens/Auth';
 import { Today } from './screens/Today';
 import { ProjectDetail, Projects } from './screens/Projects';
 import { SupplierDetail, Suppliers } from './screens/Suppliers';
+import { Horario } from './screens/Horario';
 import { CaptureSheet } from './screens/Capture';
-import { Presentation, QRScreen } from './screens/Share';
+import { Presentation } from './screens/Share';
 
-const TABS: Tab[] = ['hoy', 'proyectos', 'proveedores'];
+const TABS: Tab[] = ['hoy', 'proyectos', 'proveedores', 'horario'];
 
 /** Sesión guardada en el móvil. supabase-js la da por nula si el token caducó y no hay red para renovarlo,
     pero no la borra: la usamos para seguir captando sin conexión. Se renueva sola al volver la red. */
@@ -37,13 +39,20 @@ function ToastHost() {
 export default function App() {
   // Arranque inmediato con la sesión guardada: sin red, getSession tarda ~20 s en rendirse.
   const [session, setSession] = useState<Session | null | undefined>(() => storedSession() ?? undefined);
+  // Contenido privado guardado en el móvil (proyectos, equipo, horario): se carga antes de pintar.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    void loadContent()
+      .catch(() => {})
+      .finally(() => setReady(true));
+  }, []);
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? storedSession()));
     const { data } = supabase.auth.onAuthStateChange((e, s) => setSession(s ?? (e === 'SIGNED_OUT' ? null : storedSession())));
     return () => data.subscription.unsubscribe();
   }, []);
 
-  if (session === undefined) return null;
+  if (session === undefined || !ready) return null;
   if (!session)
     return (
       <>
@@ -56,6 +65,7 @@ export default function App() {
 
 function Main({ userId }: { userId: string }) {
   setMyId(userId);
+  useContentVersion(); // repinta si llega contenido nuevo de Supabase
   const profilesArr = useLive(() => db.profiles.toArray(), [], []);
   const profiles = useMemo(() => new Map(profilesArr.map((p) => [p.id, p])), [profilesArr]);
   const me = profiles.get(userId);
@@ -91,8 +101,8 @@ function Main({ userId }: { userId: string }) {
         const open = [...nav.stack].reverse().find((r) => r.kind === 'project');
         navOpen({ kind: 'capture', project: open?.kind === 'project' ? open.slug : undefined });
       },
+      openCaptureTag: (tag) => navOpen({ kind: 'capture', tag }),
       openPresent: (slug) => navOpen({ kind: 'present', slug }),
-      openQR: (slug) => navOpen({ kind: 'qr', slug }),
       openViewer: (paths, index) => navOpen({ kind: 'viewer', paths, index }),
       openProfile: () => navOpen({ kind: 'profile' }),
     }),
@@ -102,19 +112,18 @@ function Main({ userId }: { userId: string }) {
   const overlay = (o: Overlay, i: number) => {
     switch (o.kind) {
       case 'capture':
-        return <CaptureSheet key={i} project={o.project} onClose={navBack} />;
+        return <CaptureSheet key={i} project={o.project} tag={o.tag} onClose={navBack} />;
       case 'viewer':
         return <PhotoViewer key={i} paths={o.paths} index={o.index} onClose={navBack} />;
-      case 'qr':
-        return <QRScreen key={i} slug={o.slug} profile={me} onClose={navBack} />;
       case 'profile':
         return <ProfileSheet key={i} profile={me} myId={userId} onClose={navBack} />;
       case 'present':
-        return <Presentation key={i} slug={o.slug} profile={me} onExit={navBack} />;
+        return <Presentation key={i} slug={o.slug} onExit={navBack} />;
     }
   };
 
-  const root = (t: Tab) => (t === 'hoy' ? <Today /> : t === 'proyectos' ? <Projects /> : <Suppliers />);
+  const root = (t: Tab) =>
+    t === 'hoy' ? <Today /> : t === 'proyectos' ? <Projects /> : t === 'proveedores' ? <Suppliers /> : <Horario />;
 
   const tabBtn = (t: Tab, label: string, Icon: typeof CalendarDays) => (
     <button className={`tab ${tab === t ? 'on' : ''}`} onClick={() => navTab(t)}>
@@ -146,6 +155,7 @@ function Main({ userId }: { userId: string }) {
             </span>
           </button>
           {tabBtn('proveedores', 'Proveedores', Factory)}
+          {tabBtn('horario', 'Horario', Clock)}
         </nav>
       </div>
 

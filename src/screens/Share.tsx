@@ -1,37 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import QRCode from 'qrcode';
 import { toBlob } from 'html-to-image';
-import { QrCode, X, Copy, Share as ShareIcon } from 'lucide-react';
-import { asset, isSet, presenterFor, PROJECT_BY_SLUG, projectPhotos, publicUrl, setPresenter, TEAM } from '../lib/content';
+import { X, Share as ShareIcon } from 'lucide-react';
+import { isSet, presenterFor, PROJECT_BY_SLUG, projectPhotos, setPresenter, TEAM } from '../lib/content';
 import type { Profile, Project, TeamMember } from '../lib/types';
-import { copyText, toast } from '../lib/toast';
+import { toast } from '../lib/toast';
 import { shareOrDownload } from '../lib/util';
-import { Segmented, Sheet } from '../components/ui';
+import { useComposableUrls } from '../lib/photos';
+import { Empty, PhotoImg, Segmented, Sheet } from '../components/ui';
 import { ProjectTextView } from '../components/ProjectText';
 
-function useQr(url: string, width = 640) {
-  const [src, setSrc] = useState<string>();
-  useEffect(() => {
-    QRCode.toDataURL(url, { margin: 1, width, errorCorrectionLevel: 'M' }).then(setSrc, () => setSrc(undefined));
-  }, [url, width]);
-  return src;
-}
-
 const zhTitle = (p: Project) => (isSet(p.zh.title) ? p.zh.title : p.name);
-const photosOf = projectPhotos;
-
-function QRPanel({ project, member }: { project: Project; member: TeamMember }) {
-  const src = useQr(publicUrl(project.slug, member));
-  return (
-    <div className="qr-box">
-      {src ? <img className="qr" src={src} alt="QR" /> : <div className="qr ph-empty" />}
-      <div className="qr-title">{zhTitle(project)}</div>
-      <div className="qr-sub">扫码查看 · {member.name} · Traevo Global</div>
-    </div>
-  );
-}
 
 function MemberPicker({ member, onChange }: { member: TeamMember; onChange: (m: TeamMember) => void }) {
+  if (!TEAM.length) return null;
   return (
     <Segmented
       value={member.slug}
@@ -44,34 +25,10 @@ function MemberPicker({ member, onChange }: { member: TeamMember; onChange: (m: 
   );
 }
 
-/** QR a pantalla completa (desde Explicación). */
-export function QRScreen({ slug, profile, onClose }: { slug: string; profile?: Profile; onClose: () => void }) {
-  const project = PROJECT_BY_SLUG.get(slug)!;
-  const [member, setMember] = useState(() => presenterFor(profile));
-  const url = publicUrl(slug, member);
-  return (
-    <div className="full qr-screen">
-      <button className="full-close" onClick={onClose} aria-label="Cerrar">
-        <X size={22} />
-      </button>
-      <QRPanel project={project} member={member} />
-      <div className="qr-foot">
-        <MemberPicker member={member} onChange={setMember} />
-        <button className="link small" onClick={() => copyText(url)}>
-          <Copy size={14} /> {url.replace('https://', '')}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** Modo presentación bloqueado: solo la explicación en chino y sus fotos. */
-export function Presentation({ slug, profile, onExit }: { slug: string; profile?: Profile; onExit: () => void }) {
-  const project = PROJECT_BY_SLUG.get(slug)!;
-  const photos = photosOf(project);
+/** Modo presentación: solo la explicación en chino y sus fotos. */
+export function Presentation({ slug, onExit }: { slug: string; onExit: () => void }) {
+  const project = PROJECT_BY_SLUG.get(slug);
   const [zoom, setZoom] = useState<number | null>(null);
-  const [qr, setQr] = useState(false);
-  const member = presenterFor(profile);
 
   useEffect(() => {
     let lock: { release: () => Promise<void> } | null = null;
@@ -84,25 +41,20 @@ export function Presentation({ slug, profile, onExit }: { slug: string; profile?
     };
   }, []);
 
-  const t = { ...project.zh, title: zhTitle(project) };
+  const photos = project ? projectPhotos(project) : [];
   return (
     <div className="present" onContextMenu={(e) => e.preventDefault()}>
-      <ProjectTextView t={t} photos={photos} zh onPhoto={setZoom} />
+      {project ? (
+        <ProjectTextView t={{ ...project.zh, title: zhTitle(project) }} photos={photos} zh onPhoto={setZoom} />
+      ) : (
+        <Empty>Proyecto no disponible.</Empty>
+      )}
       <button className="present-close" onClick={onExit}>
         <X size={18} strokeWidth={2.4} /> Salir
       </button>
-      <button className="present-qr" onClick={() => setQr(true)} aria-label="QR">
-        <QrCode size={26} />
-      </button>
       {zoom !== null && (
         <div className="lightbox" onClick={() => setZoom(null)}>
-          <img src={photos[zoom]} alt="" />
-        </div>
-      )}
-      {qr && (
-        <div className="full qr-screen inner" onClick={() => setQr(false)}>
-          <QRPanel project={project} member={member} />
-          <div className="qr-foot muted">Toca para volver</div>
+          <PhotoImg path={photos[zoom]} />
         </div>
       )}
     </div>
@@ -117,22 +69,22 @@ async function waitImages(node: HTMLElement) {
   );
 }
 
-/** 长图 para WeChat: explicación en chino + contacto. */
+/** 长图 para WeChat: explicación en chino + contacto. Las fotos y el QR de WeChat salen del bucket privado. */
 export function WeChatImageSheet({ project, profile, onClose }: { project: Project; profile?: Profile; onClose: () => void }) {
   const [member, setMember] = useState(() => presenterFor(profile));
   const [out, setOut] = useState<{ file: File; url: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const node = useRef<HTMLDivElement>(null);
-  const qr = useQr(publicUrl(project.slug, member), 360);
   const zh = project.zh;
-  const photos = photosOf(project).slice(0, 6);
+  const photos = useComposableUrls(projectPhotos(project).slice(0, 6));
+  const wechatQr = useComposableUrls(isSet(member.wechatQr) ? [member.wechatQr] : []);
 
   useEffect(() => () => {
     if (out) URL.revokeObjectURL(out.url);
   }, [out]);
 
   useEffect(() => {
-    if (!qr) return;
+    if (!photos || !wechatQr) return;
     let cancelled = false;
     void (async () => {
       setBusy(true);
@@ -153,7 +105,7 @@ export function WeChatImageSheet({ project, profile, onClose }: { project: Proje
     return () => {
       cancelled = true;
     };
-  }, [qr, project.slug]);
+  }, [photos, wechatQr, project.slug]);
 
   const list = (title: string, xs: string[]) =>
     xs.filter(isSet).length > 0 && (
@@ -172,7 +124,7 @@ export function WeChatImageSheet({ project, profile, onClose }: { project: Proje
       <MemberPicker member={member} onChange={setMember} />
       <div className="pad">
         <button className="btn primary" disabled={!out || busy} onClick={() => out && shareOrDownload(out.file)}>
-          <ShareIcon size={20} /> {busy ? 'Generando…' : 'Compartir / Guardar'}
+          <ShareIcon size={20} /> {busy || !out ? 'Generando…' : 'Compartir / Guardar'}
         </button>
         <p className="foot">También puedes mantener pulsada la imagen para guardarla en Fotos.</p>
       </div>
@@ -192,7 +144,7 @@ export function WeChatImageSheet({ project, profile, onClose }: { project: Proje
           {list('我们的需求', zh.needs)}
           {list('要求', zh.requirements)}
           {list('我们想了解', zh.questions)}
-          {photos.map((src) => (
+          {photos?.filter(Boolean).map((src) => (
             <img key={src} className="wx-photo" src={src} alt="" />
           ))}
           <div className="wx-card">
@@ -205,20 +157,14 @@ export function WeChatImageSheet({ project, profile, onClose }: { project: Proje
               {isSet(member.email) && <div>邮箱：{member.email}</div>}
               <div>网站：traevo.net</div>
             </div>
-            <div className="wx-qrs">
-              {isSet(member.wechatQr) && (
+            {wechatQr?.[0] && (
+              <div className="wx-qrs">
                 <figure>
-                  <img src={asset(member.wechatQr)} alt="" />
+                  <img src={wechatQr[0]} alt="" />
                   <figcaption>加微信</figcaption>
                 </figure>
-              )}
-              {qr && (
-                <figure>
-                  <img src={qr} alt="" />
-                  <figcaption>项目详情</figcaption>
-                </figure>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

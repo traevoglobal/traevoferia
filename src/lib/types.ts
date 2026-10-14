@@ -61,6 +61,8 @@ export interface Draft {
   note: string;
   project_ids: string[];
   event: string;
+  /** Etiqueta de la franja del Horario desde la que se abrió ("<día> <hora> <persona> · <lugar corto>"). */
+  tags?: string[];
 }
 
 export interface ProjectText {
@@ -81,6 +83,66 @@ export interface Project {
   es: ProjectText;
   zh: ProjectText;
   photos: string[];
+}
+
+/** Fila de contenido privado (Supabase feria_content → Dexie): 'projects', 'team', 'horario'. */
+export interface ContentRow {
+  key: string;
+  data: unknown;
+  updated_at: string;
+}
+
+/* ---------- Horario (contenido privado "horario") ---------- */
+export type Who = 'javi' | 'rafa' | 'ambos';
+export type Member = Exclude<Who, 'ambos'>;
+
+export interface SlotCounter {
+  id: string;
+  label: string;
+  goal: number;
+  /** Cuenta las fichas reales de la franja; el +/− queda como ajuste manual de respaldo. */
+  fichas?: boolean;
+}
+
+export interface Slot {
+  id: string;
+  start: string;
+  end?: string;
+  who: Who;
+  place: string;
+  goal: string;
+  detail?: string;
+  /** Lugar corto (sin comas) para etiquetar la ficha. Si existe, la franja tiene "Nueva ficha". */
+  short?: string;
+  counters?: SlotCounter[];
+}
+
+export interface PlanDay {
+  id: string;
+  date: string;
+  label: string;
+  title: string;
+  note?: string;
+  slots: Slot[];
+}
+
+export interface Horario {
+  days: PlanDay[];
+  clusterDays: { id: string; date: string; title: string }[];
+  clusterNote: string;
+  rules: string[];
+  clusters: string[];
+  /** Distritos que cuentan como el mismo clúster (shunde → foshan). */
+  aliases: Record<string, string>;
+  deliverables: { who: Member; items: string[] }[];
+}
+
+export interface Visit {
+  fabrica: string;
+  ciudad: string;
+  hora: string;
+  contacto: string;
+  estado: 'pedida' | 'confirmada' | 'hecha';
 }
 
 export interface TeamMember {

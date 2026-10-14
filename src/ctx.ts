@@ -11,8 +11,9 @@ export interface AppCtx {
   push: (r: Route) => void;
   back: () => void;
   openCapture: () => void;
+  /** Captura precargada con la etiqueta de una franja del Horario. */
+  openCaptureTag: (tag: string) => void;
   openPresent: (slug: string) => void;
-  openQR: (slug: string) => void;
   openViewer: (paths: string[], index: number) => void;
   openProfile: () => void;
 }

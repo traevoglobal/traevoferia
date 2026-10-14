@@ -1,15 +1,17 @@
-import { useMemo, useRef, useState } from 'react';
-import { Camera, ChevronDown, Copy, Images, Search, Share, Trash2, X } from 'lucide-react';
+import { useMemo, useState, type CSSProperties } from 'react';
+import { ChevronDown, Copy, Search, Share, Trash2, X } from 'lucide-react';
 import { useApp } from '../ctx';
 import { db } from '../lib/db';
-import { EVENTS, PROJECTS } from '../lib/content';
-import { addPhotosToSupplier, updateSupplier } from '../lib/store';
-import { exportCsv } from '../lib/csv';
+import { CONFIG, EVENTS, PROJECTS } from '../lib/content';
+import { updateSupplier } from '../lib/store';
+import { exportBackup } from '../lib/backup';
+import { fichaId, getOf, missing, score, searchText, viaDef } from '../lib/ficha';
 import { copyText, toast } from '../lib/toast';
 import type { LocalSupplier, Supplier, TextField } from '../lib/types';
 import { fmtDateTime, norm, useLive } from '../lib/util';
-import { EditField, Empty, NavBar, Person, PhotoImg, ProjectChips, Stars, SyncPill } from '../components/ui';
+import { EditField, Empty, NavBar, Person, ProjectChips, Stars, SyncPill } from '../components/ui';
 import { SupplierRow } from '../components/SupplierRow';
+import { FichaEditor, PhotoStrip } from '../components/Ficha';
 
 function SelectChip({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void }) {
   const cur = options.find(([v]) => v === value);
@@ -29,63 +31,109 @@ function SelectChip({ label, value, options, onChange }: { label: string; value:
   );
 }
 
+/** Filtro de vía de un toque (también en Hoy). */
+export function ViaFilter({ value, onChange, counts }: { value: string; onChange: (v: string) => void; counts?: Map<string, number> }) {
+  const vias = CONFIG?.vias ?? [];
+  if (!vias.length) return null;
+  return (
+    <div className="chips">
+      <button className={`chip ${value ? '' : 'on'}`} onClick={() => onChange('')}>
+        Todas
+      </button>
+      {vias.map((v) => (
+        <button
+          key={v.id}
+          className={`chip via-chip ${value === v.id ? 'on' : ''}`}
+          style={{ '--via': v.color } as CSSProperties}
+          onClick={() => onChange(value === v.id ? '' : v.id)}
+        >
+          {v.label}
+          {counts && <b>{counts.get(v.id) ?? 0}</b>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Suppliers() {
   const { profiles } = useApp();
   const all = useLive(() => db.suppliers.toArray(), [], []);
   const [q, setQ] = useState('');
+  const [via, setVia] = useState('');
+  const [sector, setSector] = useState('');
   const [proj, setProj] = useState('');
   const [ev, setEv] = useState('');
   const [who, setWho] = useState('');
   const [deal, setDeal] = useState(false);
+  const [incomplete, setIncomplete] = useState(false);
+  const [byScore, setByScore] = useState(false);
 
   const live = useMemo(() => all.filter((s) => !s.deleted), [all]);
+  const sectors = useMemo(
+    () => [...new Set((via ? [viaDef(via)] : CONFIG?.vias ?? []).flatMap((v) => v?.sectors ?? []))],
+    [via],
+  );
 
   const list = useMemo(() => {
     const nq = norm(q);
-    return live
+    const out = live
+      .filter((s) => !via || s.extra.via === via)
+      .filter((s) => !sector || s.extra.sector === sector)
       .filter((s) => !proj || s.project_ids.includes(proj))
       .filter((s) => !ev || s.event === ev)
       .filter((s) => !who || s.created_by === who)
       .filter((s) => !deal || s.agreement.trim() !== '')
-      .filter(
-        (s) =>
-          !nq ||
-          norm([s.company, s.company_zh, s.products, s.wechat, s.city, s.note, s.contact, s.tags.join(' ')].join(' ')).includes(nq),
-      )
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
-  }, [live, q, proj, ev, who, deal]);
+      .filter((s) => !incomplete || missing(getOf(s)).length > 0)
+      .filter((s) => !nq || searchText(s).includes(nq));
+    const sc = (s: LocalSupplier) => score(getOf(s))?.value ?? -1;
+    return out.sort((a, b) => (byScore && sc(b) - sc(a)) || b.created_at.localeCompare(a.created_at));
+  }, [live, q, via, sector, proj, ev, who, deal, incomplete, byScore]);
 
   return (
     <>
       <NavBar
         center={<SyncPill />}
         right={
-          <button className="icon-btn" onClick={() => exportCsv().catch((e) => toast(e.message))} aria-label="Exportar CSV">
+          <button className="icon-btn" onClick={() => exportBackup().catch((e) => toast(e.message))} aria-label="Exportar">
             <Share size={21} />
           </button>
         }
       />
-      <h1 className="large-title">Proveedores</h1>
+      <h1 className="large-title">Fichas</h1>
       <div className="search">
         <Search size={17} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Empresa, producto, WeChat, ciudad, nota" type="search" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="21.2-A01, empresa, WeChat, nota…" type="search" />
         {q && (
           <button className="icon-btn tiny" onClick={() => setQ('')} aria-label="Borrar">
             <X size={14} />
           </button>
         )}
       </div>
+      <ViaFilter
+        value={via}
+        onChange={(v) => {
+          setVia(v);
+          setSector('');
+        }}
+      />
       <div className="chips">
+        {sectors.length > 0 && <SelectChip label="Sector" value={sector} onChange={setSector} options={sectors.map((s) => [s, s])} />}
+        <button className={`chip ${incomplete ? 'on' : ''}`} onClick={() => setIncomplete(!incomplete)}>
+          Incompletas
+        </button>
+        <button className={`chip ${byScore ? 'on' : ''}`} onClick={() => setByScore(!byScore)}>
+          Por puntuación
+        </button>
         <SelectChip label="Proyecto" value={proj} onChange={setProj} options={PROJECTS.map((p) => [p.slug, p.name])} />
-        <SelectChip label="Feria" value={ev} onChange={setEv} options={EVENTS.map((e) => [e.label, e.label])} />
         <SelectChip label="Quién" value={who} onChange={setWho} options={[...profiles.values()].map((p) => [p.id, p.name || '—'])} />
+        <SelectChip label="Feria" value={ev} onChange={setEv} options={EVENTS.map((e) => [e.label, e.label])} />
         <button className={`chip ${deal ? 'on' : ''}`} onClick={() => setDeal(!deal)}>
           Con algo pactado
         </button>
       </div>
 
       <div className="group">
-        <div className="group-title">{list.length} proveedores</div>
+        <div className="group-title">{list.length} fichas</div>
         {list.length ? (
           <div className="list">
             {list.map((s) => (
@@ -101,79 +149,49 @@ export function Suppliers() {
 }
 
 export function SupplierDetail({ id }: { id: string }) {
-  const { back, openViewer } = useApp();
+  const { back } = useApp();
   const s = useLive<LocalSupplier | false | null>(() => db.suppliers.get(id).then((x) => x ?? false), [id], null);
-  const [adding, setAdding] = useState(0);
-  const cam = useRef<HTMLInputElement>(null);
-  const gal = useRef<HTMLInputElement>(null);
 
   if (s === null) return <NavBar back="Atrás" />;
   if (!s)
     return (
       <>
         <NavBar back="Atrás" />
-        <Empty>Proveedor no encontrado.</Empty>
+        <Empty>Ficha no encontrada.</Empty>
       </>
     );
 
+  const get = getOf(s);
+  const via = viaDef(get('via'));
+  const inVia = new Set(via?.fields.map((f) => f.key) ?? []);
   const set = (patch: Partial<Supplier>) => void updateSupplier(id, patch);
-  const f = (k: TextField, label: string, extra: Partial<Parameters<typeof EditField>[0]> = {}) => (
-    <EditField label={label} value={s[k]} onSave={(v) => set({ [k]: v.trim() } as Partial<Supplier>)} {...extra} />
-  );
+  const f = (k: TextField, label: string, extra: Partial<Parameters<typeof EditField>[0]> = {}) =>
+    inVia.has(k) ? null : <EditField label={label} value={s[k]} onSave={(v) => set({ [k]: v.trim() } as Partial<Supplier>)} {...extra} />;
   const copyBtn = (v: string) => (
     <button className="icon-btn" disabled={!v} onClick={() => copyText(v)} aria-label="Copiar">
       <Copy size={18} />
     </button>
   );
 
-  const addFiles = async (input: HTMLInputElement) => {
-    const files = [...(input.files ?? [])];
-    input.value = '';
-    if (!files.length) return;
-    setAdding((n) => n + files.length);
-    try {
-      await addPhotosToSupplier(id, files);
-    } catch (e) {
-      toast((e as Error).message);
-    } finally {
-      setAdding((n) => n - files.length);
-    }
-  };
-
-
   const remove = async () => {
-    if (!confirm('¿Borrar este proveedor?')) return;
+    if (!confirm('¿Borrar esta ficha?')) return;
     await updateSupplier(id, { deleted: true });
     back();
   };
 
-  const title = s.company || s.company_zh || 'Sin clasificar';
-  const paths = s.photos.map((p) => p.path);
+  const name = s.company || s.company_zh;
+  const title = [fichaId(get), name].filter(Boolean).join(' · ') || 'Sin localizar';
 
   return (
     <>
       <NavBar back="Atrás" title={title} />
-      <h1 className={`large-title small ${s.company || s.company_zh ? '' : 'muted'}`}>{title}</h1>
+      <h1 className={`large-title small ${name ? '' : 'muted'}`}>{title}</h1>
       <p className="subtitle">
         {s.event} {s.agreement.trim() && <span className="seal">Pactado</span>}
       </p>
 
-      <div className="strip">
-        {s.photos.map((p, i) => (
-          <PhotoImg key={p.path} path={p.path} thumb className="strip-img" onClick={() => openViewer(paths, i)} />
-        ))}
-        {Array.from({ length: adding }, (_, i) => (
-          <div key={`a${i}`} className="strip-img ph-empty loading" />
-        ))}
-        <button className="strip-add" onClick={() => cam.current?.click()} aria-label="Hacer foto">
-          <Camera size={24} />
-        </button>
-        <button className="strip-add" onClick={() => gal.current?.click()} aria-label="Galería">
-          <Images size={24} />
-        </button>
-      </div>
-      <input ref={cam} className="vh" type="file" accept="image/*" capture="environment" onChange={(e) => addFiles(e.currentTarget)} />
-      <input ref={gal} className="vh" type="file" accept="image/*" multiple onChange={(e) => addFiles(e.currentTarget)} />
+      <PhotoStrip s={s} />
+      <FichaEditor s={s} />
 
       <div className="group">
         <div className="list">
@@ -215,35 +233,34 @@ export function SupplierDetail({ id }: { id: string }) {
         <div className="group-title">Oferta</div>
         <div className="list">
           {f('products', 'Productos', { multiline: true })}
-          {f('price', 'Precio')}
-          {f('moq', 'MOQ')}
+          {!via && f('price', 'Precio')}
+          {!via && f('moq', 'MOQ')}
           {f('incoterm', 'Incoterm')}
-          {f('lead_time', 'Plazo')}
-          {f('samples', 'Muestras')}
+          {!via && f('lead_time', 'Plazo')}
+          {!via && f('samples', 'Muestras')}
         </div>
       </div>
 
       <div className="group">
         <div className="group-title">Contacto</div>
         <div className="list">
-          {f('company', 'Empresa')}
-          {f('company_zh', 'Empresa (中文)')}
           {f('contact', 'Persona')}
           {f('role', 'Cargo')}
           {f('wechat', 'WeChat', { action: copyBtn(s.wechat) })}
           {f('phone', 'Teléfono', { type: 'tel', action: copyBtn(s.phone) })}
           {f('email', 'Email', { type: 'email', inputMode: 'email', action: copyBtn(s.email) })}
           {f('web', 'Web', { type: 'url' })}
-          {f('booth', 'Stand')}
           {f('city', 'Ciudad')}
-          <label className="row">
-            <span className="grow">Tipo</span>
-            <select className="select" value={s.kind} onChange={(e) => set({ kind: e.target.value })}>
-              <option value="">—</option>
-              <option value="fábrica">Fábrica</option>
-              <option value="trading">Trading</option>
-            </select>
-          </label>
+          {!inVia.has('kind') && (
+            <label className="row">
+              <span className="grow">Tipo</span>
+              <select className="select" value={s.kind} onChange={(e) => set({ kind: e.target.value })}>
+                <option value="">—</option>
+                <option value="fábrica">Fábrica</option>
+                <option value="trading">Trading</option>
+              </select>
+            </label>
+          )}
         </div>
       </div>
 
@@ -271,7 +288,7 @@ export function SupplierDetail({ id }: { id: string }) {
 
       <div className="pad">
         <button className="btn plain danger" onClick={remove}>
-          <Trash2 size={18} /> Borrar proveedor
+          <Trash2 size={18} /> Borrar ficha
         </button>
       </div>
     </>

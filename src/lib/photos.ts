@@ -41,6 +41,9 @@ export async function compressPhoto(file: Blob): Promise<{ blob: Blob; thumb: Bl
   return { blob, thumb };
 }
 
+/** Ruta de la miniatura subida junto a cada foto. */
+export const thumbPath = (path: string) => path.replace(/\.jpg$/, '_t.jpg');
+
 /* ---------- URLs firmadas (por lotes y cacheadas) ---------- */
 const TTL = 7 * 24 * 3600;
 const mem = new Map<string, { url: string; exp: number }>();
@@ -153,7 +156,8 @@ export function usePhotoUrl(path: string | undefined, thumb = false): string | u
         return;
       }
       try {
-        const u = await getSignedUrl(path);
+        // Del otro móvil: miniatura si se subió; si no (fotos antiguas), la foto entera.
+        const u = thumb && path.endsWith('.jpg') ? await getSignedUrl(thumbPath(path)).catch(() => getSignedUrl(path)) : await getSignedUrl(path);
         if (!cancelled) setUrl(u);
       } catch {
         /* sin conexión: se queda el hueco */

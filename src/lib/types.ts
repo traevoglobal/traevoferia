@@ -1,5 +1,30 @@
 export interface PhotoRef {
   path: string;
+  /** Tipo de foto (id de config.photoKinds: wechat, placa…). */
+  kind?: string;
+}
+
+export interface AudioRef {
+  path: string;
+  secs: number;
+}
+
+/** Datos de la ficha que dependen de la configuración privada (jsonb `extra`). */
+export interface SupplierExtra {
+  hall?: string;
+  via?: string;
+  sector?: string;
+  audios?: AudioRef[];
+  /** Ficha enlazada (la de otra vía creada desde esta, o de la que sale). */
+  link?: string;
+  /** Miembro al que se asigna (javi / rafa). */
+  owner?: string;
+  /** "La frase": el problema concreto. */
+  problem?: string;
+  /** Estado final del cierre (config.statuses). */
+  status?: string;
+  /** Campos rápidos y de cierre definidos en la configuración. */
+  [key: string]: string | AudioRef[] | undefined;
 }
 
 export const TEXT_FIELDS = [
@@ -16,6 +41,7 @@ export type Supplier = Record<TextField, string> & {
   photos: PhotoRef[];
   event: string;
   note: string;
+  extra: SupplierExtra;
   deleted: boolean;
   created_by: string;
   updated_by: string;
@@ -53,6 +79,13 @@ export interface DraftPhoto {
   id: string;
   blob: Blob;
   thumb: Blob;
+  kind?: string;
+}
+
+export interface DraftAudio {
+  id: string;
+  blob: Blob;
+  secs: number;
 }
 
 export interface Draft {
@@ -63,6 +96,69 @@ export interface Draft {
   event: string;
   /** Etiqueta de la franja del Horario desde la que se abrió ("<día> <hora> <persona> · <lugar corto>"). */
   tags?: string[];
+  audios?: DraftAudio[];
+  /** Campos de texto de la ficha (stand, empresa, precio…). */
+  fields?: Partial<Record<TextField, string>>;
+  extra?: SupplierExtra;
+}
+
+/* ---------- Configuración privada de las fichas (contenido "config") ---------- */
+export type Option = [value: string, label: string];
+
+/** Campo de la ficha: texto de la ficha (TEXT_FIELDS) o clave de `extra`. Con options, botones de un toque. */
+export interface FieldDef {
+  key: string;
+  label: string;
+  options?: Option[];
+  /** Opción a destacar (el mejor lead). */
+  best?: string;
+  /** Va plegado en Captar ("Más"). */
+  more?: boolean;
+  /** Solo se muestra si otra clave tiene ese valor (p. ej. un sector). */
+  showIf?: Record<string, string>;
+}
+
+export interface Cond {
+  key: string;
+  in: string[];
+}
+
+export interface ScoreItem {
+  points: number;
+  all?: Cond[];
+  any?: Cond[];
+  none?: Cond[];
+}
+
+export interface ViaDef {
+  id: string;
+  label: string;
+  hint: string;
+  color: string;
+  sectorLabel?: string;
+  sectors: string[];
+  /** Campos rápidos en el stand. */
+  fields: FieldDef[];
+  /** Campos del cierre de la noche. */
+  close?: FieldDef[];
+  /** Pregunta de "la frase". Si existe, una ficha sin frase está incompleta. */
+  problem?: string;
+  /** Botón que crea una ficha enlazada de otra vía, asignada a alguien. */
+  spawn?: { label: string; via: string; owner: string };
+  /** La ficha queda descartada si se cumple alguna condición. */
+  discard?: { any: Cond[]; label: string; tone?: 'gray' | 'red' }[];
+  /** Al elegir ciertos valores, fija otros campos y bloquea opciones. */
+  locks?: { when: Cond; set: Record<string, string>; disable: Record<string, string[]> }[];
+  score?: { max: number; min: number; items: ScoreItem[] };
+}
+
+export interface FichaConfig {
+  halls: string[];
+  photoKinds: Option[];
+  vias: ViaDef[];
+  statuses: Option[];
+  /** [etiqueta, URL con {q} (nombre) o {zh} (nombre en chino)]. */
+  links: Option[];
 }
 
 export interface ProjectText {
@@ -102,6 +198,10 @@ export interface SlotCounter {
   goal: number;
   /** Cuenta las fichas reales de la franja; el +/− queda como ajuste manual de respaldo. */
   fichas?: boolean;
+  /** Solo fichas de esta vía (y con su color). */
+  via?: string;
+  /** Solo fichas con esta clave de `extra` rellena (p. ej. "problem"). */
+  with?: string;
 }
 
 export interface Slot {

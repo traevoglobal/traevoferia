@@ -108,6 +108,7 @@ create table if not exists public.suppliers (
   photos jsonb not null default '[]'::jsonb,
   event text not null default '',
   note text not null default '',
+  extra jsonb not null default '{}'::jsonb,  -- vía, pabellón, campos rápidos y de cierre (definidos en feria_content 'config')
   deleted boolean not null default false,
   created_by uuid references auth.users(id) on delete set null,
   updated_by uuid references auth.users(id) on delete set null,
@@ -195,6 +196,9 @@ begin
     alter publication supabase_realtime add table public.project_notes;
   end if;
 end $$;
+
+-- 7b) Fichas por vía: columna extra en bases creadas antes
+alter table public.suppliers add column if not exists extra jsonb not null default '{}'::jsonb;
 
 -- 8) Sin IA: limpieza de lo que dejó la versión anterior (no hace nada en una base nueva)
 alter table public.suppliers drop column if exists ai_status, drop column if exists ai_summary;

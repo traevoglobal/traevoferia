@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { CalendarDays, Camera, Clock, Factory, FolderOpen } from 'lucide-react';
+import { CalendarDays, Camera, Clock, Factory, FolderOpen, TriangleAlert } from 'lucide-react';
 import { Ctx, type AppCtx } from './ctx';
 import { AUTH_STORAGE_KEY, setMyId, supabase } from './lib/supabase';
 import { db } from './lib/db';
@@ -9,12 +9,15 @@ import { navBack, keptStack, navInit, navOpen, navPush, navTab, useNav, type Ove
 import { useToast } from './lib/toast';
 import { useLive } from './lib/util';
 import { loadContent, useContentVersion } from './lib/content';
+import { draftHasContent } from './lib/ficha';
+import { applyTheme, THEME } from './lib/prefs';
 import { PhotoViewer } from './components/ui';
 import { Login, NameSheet, ProfileSheet } from './screens/Auth';
 import { Today } from './screens/Today';
 import { ProjectDetail, Projects } from './screens/Projects';
 import { SupplierDetail, Suppliers } from './screens/Suppliers';
 import { Horario } from './screens/Horario';
+import { Cierre } from './screens/Cierre';
 import { CaptureSheet } from './screens/Capture';
 import { Presentation } from './screens/Share';
 
@@ -31,6 +34,19 @@ function storedSession(): Session | null {
   }
 }
 
+/** Sin instalar en pantalla de inicio, iOS puede borrar los datos del navegador a los 7 días sin uso. */
+const standalone = () =>
+  window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+function InstallBanner() {
+  if (standalone()) return null;
+  return (
+    <div className="install-banner">
+      <TriangleAlert size={16} /> Instala en pantalla de inicio o iOS puede borrar tus datos a los 7 días
+    </div>
+  );
+}
+
 function ToastHost() {
   const msg = useToast();
   return msg ? <div className="toast">{msg}</div> : null;
@@ -41,6 +57,8 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(() => storedSession() ?? undefined);
   // Contenido privado guardado en el móvil (proyectos, equipo, horario): se carga antes de pintar.
   const [ready, setReady] = useState(false);
+  const theme = THEME.use();
+  useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
     void loadContent()
       .catch(() => {})
@@ -76,7 +94,7 @@ function Main({ userId }: { userId: string }) {
   const tab = nav.tab;
 
   const draft = useLive(() => db.drafts.get('current'), [], undefined);
-  const hasDraft = !!draft && (draft.photos.length > 0 || draft.note.trim() !== '');
+  const hasDraft = !!draft && draftHasContent(draft);
 
   useEffect(() => {
     const stop = startSync();
@@ -134,13 +152,13 @@ function Main({ userId }: { userId: string }) {
 
   return (
     <Ctx.Provider value={ctx}>
-      <div className="app">
+      <div className={`app ${standalone() ? '' : 'unsafe'}`}>
         {TABS.map((t) => (
           <div key={t} className={`tab-pane ${t === tab ? 'active' : ''}`}>
             <div className="view">{root(t)}</div>
             {keptStack(t).map((r, i) => (
-              <div key={`${i}-${r.kind === 'project' ? r.slug : r.id}`} className="view pushed">
-                {r.kind === 'project' ? <ProjectDetail slug={r.slug} /> : <SupplierDetail id={r.id} />}
+              <div key={`${i}-${r.kind === 'project' ? r.slug : r.kind === 'supplier' ? r.id : r.kind}`} className="view pushed">
+                {r.kind === 'project' ? <ProjectDetail slug={r.slug} /> : r.kind === 'supplier' ? <SupplierDetail id={r.id} /> : <Cierre />}
               </div>
             ))}
           </div>
@@ -154,13 +172,14 @@ function Main({ userId }: { userId: string }) {
               {hasDraft && <i className="badge" />}
             </span>
           </button>
-          {tabBtn('proveedores', 'Proveedores', Factory)}
+          {tabBtn('proveedores', 'Fichas', Factory)}
           {tabBtn('horario', 'Horario', Clock)}
         </nav>
       </div>
 
       {nav.overlays.map(overlay)}
       {checked && me && !me.name && <NameSheet profile={me} />}
+      <InstallBanner />
       <ToastHost />
     </Ctx.Provider>
   );

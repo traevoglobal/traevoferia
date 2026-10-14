@@ -1,41 +1,25 @@
-import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type Ref } from 'react';
 import { Check, MapPin, Minus, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { useApp } from '../ctx';
 import { db } from '../lib/db';
 import { HORARIO } from '../lib/content';
 import type { Horario as Plan, Member, PlanDay, Slot, SlotCounter, Visit, Who } from '../lib/types';
+import { allTags, chinaDate, countFichas, MEMBERS, slotTag, useNow, usersByMember, WHO_LABEL, windowOf } from '../lib/plan';
+import { viaColor } from '../lib/ficha';
 import { norm, useLive, useStored } from '../lib/util';
 import { Empty, NavBar, Segmented, SyncPill } from '../components/ui';
 
 /* Horario de la feria por persona (contenido privado "horario" en Supabase). Lo marcado aquí (hecho, contadores,
    visitas, entregables) se guarda solo en este móvil. Las horas son de China (UTC+8). */
 
-const WHO_LABEL: Record<Who, string> = { javi: 'Javi', rafa: 'Rafa', ambos: 'Ambos' };
-const MEMBERS: Member[] = ['javi', 'rafa'];
-const CN = 8 * 3600_000;
 const EMPTY_VISIT: Visit = { fabrica: '', ciudad: '', hora: '', contacto: '', estado: 'pedida' };
 const NEW_DAY: Visit[] = [EMPTY_VISIT, EMPTY_VISIT, EMPTY_VISIT];
 
-/** Fecha AAAA-MM-DD en China, sea cual sea la zona horaria del móvil. */
-const chinaDate = (ms: number) => new Date(ms + CN).toISOString().slice(0, 10);
-const chinaMs = (date: string, hhmm: string) => Date.parse(`${date}T${hhmm}:00+08:00`);
 const visible = (who: Who, filter: Who) => filter === 'ambos' || who === 'ambos' || who === filter;
 const cluster = (aliases: Record<string, string>, c: string) => {
   const n = norm(c);
   return aliases[n] ?? n;
 };
-
-/** Inicio y fin de una franja; sin hora de fin, dura hasta la siguiente franja del día (o una hora). */
-function windowOf(day: PlanDay, s: Slot): [number, number] {
-  const a = chinaMs(day.date, s.start);
-  if (s.end) return [a, chinaMs(day.date, s.end)];
-  const next = day.slots.map((x) => chinaMs(day.date, x.start)).filter((t) => t > a);
-  return [a, next.length ? Math.min(...next) : a + 3600_000];
-}
-
-/** Etiqueta de la ficha creada desde la franja. Sin comas: el campo Etiquetas separa por comas. */
-const slotTag = (day: PlanDay, s: Slot) => `${day.label} ${s.start} ${WHO_LABEL[s.who]} · ${s.short}`;
-const allTags = (h: Plan) => new Set(h.days.flatMap((d) => d.slots.filter((s) => s.short).map((s) => slotTag(d, s))));
 
 /** Abre en el día de hoy (hora de China); fuera de fechas, en el primero. */
 function defaultView(h: Plan): string {
@@ -45,15 +29,6 @@ function defaultView(h: Plan): string {
   if (h.clusterDays.some((d) => d.date === today)) return 'clus';
   if (today > h.clusterDays[h.clusterDays.length - 1].date) return 'fin';
   return h.days[0].id;
-}
-
-function useNow(every = 30_000) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), every);
-    return () => clearInterval(t);
-  }, [every]);
-  return now;
 }
 
 export function Horario() {
@@ -95,25 +70,7 @@ function DayView({ h, day, who }: { h: Plan; day: PlanDay; who: Who }) {
   const nowRef = useRef<HTMLDivElement>(null);
   const tags = useMemo(() => allTags(h), [h]);
 
-  // Usuarios de cada miembro, por el nombre del perfil ("Javi…", "Rafa…").
-  const users = useMemo(() => {
-    const m: Record<Member, string[]> = { javi: [], rafa: [] };
-    for (const p of profiles.values()) for (const k of MEMBERS) if (norm(p.name).startsWith(k)) m[k].push(p.id);
-    return m;
-  }, [profiles]);
-
-  /** Fichas de la franja: las creadas desde su botón y, sin etiqueta de franja, las que esa persona creó durante su horario. */
-  const fichas = (s: Slot) => {
-    const [a, b] = windowOf(day, s);
-    const tag = s.short ? slotTag(day, s) : '';
-    const ids = s.who === 'ambos' ? [...users.javi, ...users.rafa] : users[s.who];
-    return suppliers.filter((x) => {
-      if (x.deleted) return false;
-      if (x.tags.some((t) => tags.has(t))) return x.tags.includes(tag);
-      const t = Date.parse(x.created_at);
-      return ids.includes(x.created_by) && t >= a && t < b;
-    }).length;
-  };
+  const users = useMemo(() => usersByMember(profiles.values()), [profiles]);
 
   const isNow = (s: Slot) => {
     const [a, b] = windowOf(day, s);
@@ -140,7 +97,7 @@ function DayView({ h, day, who }: { h: Plan; day: PlanDay; who: Who }) {
             now={isNow(s)}
             done={!!done[s.id]}
             onDone={() => setDone((p) => ({ ...p, [s.id]: !p[s.id] }))}
-            fichas={s.counters?.some((c) => c.fichas) ? fichas(s) : 0}
+            fichas={(c) => countFichas(day, s, c, suppliers, users, tags)}
             extra={extra}
             onStep={(id, delta, min) => setExtra((p) => ({ ...p, [id]: Math.max(min, (p[id] ?? 0) + delta) }))}
             onFicha={s.short ? () => openCaptureTag(slotTag(day, s)) : undefined}
@@ -155,7 +112,7 @@ function DayView({ h, day, who }: { h: Plan; day: PlanDay; who: Who }) {
 function SlotCard({
   slot: s, now, done, onDone, fichas, extra, onStep, onFicha, cardRef,
 }: {
-  slot: Slot; now: boolean; done: boolean; onDone: () => void; fichas: number;
+  slot: Slot; now: boolean; done: boolean; onDone: () => void; fichas: (c: SlotCounter) => number;
   extra: Record<string, number>; onStep: (id: string, delta: number, min: number) => void; onFicha?: () => void; cardRef?: Ref<HTMLDivElement>;
 }) {
   return (
@@ -174,7 +131,7 @@ function SlotCard({
       </div>
       <div className="slot-goal">{s.goal}</div>
       {s.counters?.map((c) => (
-        <Counter key={c.id} c={c} base={c.fichas ? fichas : 0} extra={extra[c.id] ?? 0} onStep={(d, min) => onStep(c.id, d, min)} />
+        <Counter key={c.id} c={c} base={c.fichas ? fichas(c) : 0} extra={extra[c.id] ?? 0} onStep={(d, min) => onStep(c.id, d, min)} />
       ))}
       {s.detail && (
         <details>
@@ -191,11 +148,11 @@ function SlotCard({
   );
 }
 
-/** Contador "7 / 40". Si cuenta fichas, el +/− es un ajuste manual sobre las fichas reales. */
-function Counter({ c, base, extra, onStep }: { c: SlotCounter; base: number; extra: number; onStep: (delta: number, min: number) => void }) {
+/** Contador "7 / 40", con el color de su vía. Si cuenta fichas, el +/− es un ajuste manual sobre las fichas reales. */
+export function Counter({ c, base, extra, onStep }: { c: SlotCounter; base: number; extra: number; onStep: (delta: number, min: number) => void }) {
   const value = Math.max(0, base + extra);
   return (
-    <div className="ctr">
+    <div className={`ctr ${c.via ? 'via' : ''}`} style={c.via ? ({ '--via': viaColor(c.via) } as CSSProperties) : undefined}>
       <span className="grow">
         {c.label}
         {c.fichas && (

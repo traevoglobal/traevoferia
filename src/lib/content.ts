@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { ContentRow, Horario, Profile, Project, ProjectText, TeamMember } from './types';
+import type { ContentRow, FichaConfig, Horario, Profile, Project, ProjectText, TeamMember } from './types';
 import { db } from './db';
 import { norm } from './util';
 
@@ -13,6 +13,8 @@ export let PROJECTS: Project[] = [];
 export let PROJECT_BY_SLUG = new Map<string, Project>();
 export let TEAM: TeamMember[] = [];
 export let HORARIO: Horario | null = null;
+/** Vías, campos, reglas, pabellones y enlaces de las fichas. */
+export let CONFIG: FichaConfig | null = null;
 
 let version = 0;
 const listeners = new Set<() => void>();
@@ -23,6 +25,7 @@ function apply(rows: ContentRow[]) {
   PROJECT_BY_SLUG = new Map(PROJECTS.map((p) => [p.slug, p]));
   TEAM = get<TeamMember[]>('team') ?? [];
   HORARIO = get<Horario>('horario') ?? null;
+  CONFIG = get<FichaConfig>('config') ?? null;
   version++;
   listeners.forEach((l) => l());
 }

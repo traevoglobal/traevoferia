@@ -5,6 +5,7 @@ import { getMyId, supabase } from './supabase';
 import { TEXT_FIELDS, type LocalNote, type LocalSupplier, type Profile } from './types';
 import { useLive } from './util';
 import { storeContent } from './content';
+import { thumbPath } from './photos';
 
 /* ---------- Estado ---------- */
 type Status = { online: boolean; syncing: boolean; error: string | null };
@@ -55,6 +56,7 @@ export function normalizeSupplier(r: any): LocalSupplier {
     photos: Array.isArray(r.photos) ? r.photos.filter((p: { path?: string }) => p?.path) : [],
     event: str(r.event),
     note: str(r.note),
+    extra: r.extra && typeof r.extra === 'object' && !Array.isArray(r.extra) ? r.extra : {},
     deleted: !!r.deleted,
     created_by: str(r.created_by),
     updated_by: str(r.updated_by),
@@ -160,10 +162,12 @@ async function pushSuppliers(): Promise<string | null> {
   for (const s of dirty) {
     const pending = (await db.photos.where('supplier_id').equals(s.id).toArray()).filter((p) => !p.uploaded);
     let ok = true;
+    const up = (path: string, blob: Blob) =>
+      supabase.storage.from('photos').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: true, cacheControl: '31536000' });
     for (const p of pending) {
-      const { error } = await supabase.storage
-        .from('photos')
-        .upload(p.path, p.blob, { contentType: 'image/jpeg', upsert: true, cacheControl: '31536000' });
+      let { error } = await up(p.path, p.blob);
+      // Miniatura aparte: el otro móvil la usa en los listados en vez de la foto entera.
+      if ((!error || /exist|duplicate/i.test(error.message)) && p.thumb) ({ error } = await up(thumbPath(p.path), p.thumb));
       if (error && !/exist|duplicate/i.test(error.message)) {
         err = error.message;
         ok = false;

@@ -1,17 +1,39 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronLeft, CloudOff, RefreshCw, Check, Star, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, CloudOff, MapPin, RefreshCw, Check, Star, X } from 'lucide-react';
 import { useApp } from '../ctx';
 import { syncNow, usePendingCount, useSyncStatus } from '../lib/sync';
 import { usePhotoUrl } from '../lib/photos';
 import { colorFor, initials } from '../lib/util';
-import { PROJECT_BY_SLUG } from '../lib/content';
+import { CONFIG, PROJECT_BY_SLUG } from '../lib/content';
+import { HALL } from '../lib/prefs';
 import { navBack } from '../lib/nav';
+
+/** "Estoy en: 21.2": pabellón activo, lo heredan las fichas nuevas. */
+function HallPicker() {
+  const hall = HALL.use();
+  const halls = CONFIG?.halls ?? [];
+  if (!halls.length) return null;
+  return (
+    <label className={`hall-pick ${hall ? '' : 'empty'}`}>
+      <MapPin size={15} />
+      <span>{hall || '¿Dónde estás?'}</span>
+      <ChevronDown size={14} />
+      <select value={hall} onChange={(e) => HALL.set(e.target.value)} aria-label="Estoy en">
+        <option value="">— Sin pabellón —</option>
+        {halls.map((h) => (
+          <option key={h}>{h}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 export function NavBar({ back, title, right, center }: { back?: string; title?: string; right?: ReactNode; center?: ReactNode }) {
   const { back: goBack } = useApp();
   return (
     <header className="nav">
       <div className="nav-left">
+        {back === undefined && <HallPicker />}
         {back !== undefined && (
           <button className="back" onClick={goBack}>
             <ChevronLeft size={28} strokeWidth={2.4} />
@@ -99,10 +121,15 @@ export function ProjectDots({ ids }: { ids: string[] }) {
   );
 }
 
-export function ProjectChips({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  const all = [...PROJECT_BY_SLUG.values()];
+/** Proyectos de un toque. Con `row`, en una fila; con `order`, los de uso reciente primero. */
+export function ProjectChips({ value, onChange, row, order }: { value: string[]; onChange: (v: string[]) => void; row?: boolean; order?: string[] }) {
+  const rank = (slug: string) => {
+    const i = order?.indexOf(slug) ?? -1;
+    return i < 0 ? 999 : i;
+  };
+  const all = [...PROJECT_BY_SLUG.values()].sort((a, b) => rank(a.slug) - rank(b.slug));
   return (
-    <div className="chips wrap">
+    <div className={`chips ${row ? 'row' : 'wrap'}`}>
       {all.map((p) => {
         const on = value.includes(p.slug);
         return (
@@ -142,14 +169,27 @@ export function PhotoImg({ path, thumb, className, onClick }: { path?: string; t
   );
 }
 
+/** Hoja inferior. Se cierra con su botón, tocando fuera o arrastrando la cabecera hacia abajo. `foot` queda fijo abajo (zona del pulgar). */
 export function Sheet({
-  title, left, right, children, onClose, tall,
-}: { title?: string; left?: ReactNode; right?: ReactNode; children: ReactNode; onClose?: () => void; tall?: boolean }) {
+  title, left, right, children, onClose, tall, foot,
+}: { title?: string; left?: ReactNode; right?: ReactNode; children: ReactNode; onClose?: () => void; tall?: boolean; foot?: ReactNode }) {
+  const close = onClose ?? navBack;
+  const [dy, setDy] = useState(0);
+  const start = useRef<number | null>(null);
   return (
     <>
-      <div className="sheet-backdrop" onClick={onClose ?? navBack} />
-      <div className={`sheet ${tall ? 'tall' : ''}`} role="dialog">
-        <div className="sheet-head">
+      <div className="sheet-backdrop" onClick={close} />
+      <div className={`sheet ${tall ? 'tall' : ''} ${dy ? 'dragging' : ''}`} role="dialog" style={dy ? { transform: `translateY(${dy}px)` } : undefined}>
+        <div
+          className="sheet-head"
+          onTouchStart={(e) => (start.current = e.touches[0].clientY)}
+          onTouchMove={(e) => start.current !== null && setDy(Math.max(0, e.touches[0].clientY - start.current))}
+          onTouchEnd={() => {
+            start.current = null;
+            if (dy > 110) close();
+            else setDy(0);
+          }}
+        >
           <div className="nav-left">{left}</div>
           <div className="nav-center">
             <span className="nav-title">{title}</span>
@@ -157,6 +197,7 @@ export function Sheet({
           <div className="nav-right">{right}</div>
         </div>
         <div className="sheet-body">{children}</div>
+        {foot && <div className="sheet-foot">{foot}</div>}
       </div>
     </>
   );

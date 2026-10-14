@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { liveQuery } from 'dexie';
 
 export function uuid(): string {
@@ -42,6 +42,40 @@ export function isToday(iso: string): boolean {
   const d = new Date(iso);
   const n = new Date();
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+}
+
+/** Valor guardado en este móvil y compartido entre pantallas (localStorage + suscripción). */
+export function storedValue<T>(key: string, initial: T) {
+  let value: T = initial;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw !== null) value = JSON.parse(raw) as T;
+  } catch {
+    /* sin almacenamiento: en memoria */
+  }
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    set(v: T) {
+      value = v;
+      try {
+        localStorage.setItem(key, JSON.stringify(v));
+      } catch {
+        /* sin espacio o modo privado */
+      }
+      listeners.forEach((l) => l());
+    },
+    use: () =>
+      useSyncExternalStore(
+        (f) => {
+          listeners.add(f);
+          return () => {
+            listeners.delete(f);
+          };
+        },
+        () => value,
+      ),
+  };
 }
 
 /** Estado guardado en este móvil (localStorage). Si no hay almacenamiento, funciona solo en memoria. */

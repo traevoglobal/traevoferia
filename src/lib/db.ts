@@ -36,6 +36,17 @@ class FeriaDB extends Dexie {
       );
     // v3: contenido privado (proyectos, equipo, horario) para usarlo sin red.
     this.version(3).stores({ content: 'key' });
+    // v4: datos de vía, campos rápidos y cierre en `extra`.
+    this.version(4)
+      .stores({ suppliers: 'id, _dirty, created_at' })
+      .upgrade((tx) =>
+        tx
+          .table('suppliers')
+          .toCollection()
+          .modify((s: Record<string, unknown>) => {
+            if (!s.extra || typeof s.extra !== 'object') s.extra = {};
+          }),
+      );
   }
 }
 

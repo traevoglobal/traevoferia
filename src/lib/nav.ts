@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from 'react';
 
 export type Tab = 'hoy' | 'proyectos' | 'proveedores' | 'horario';
-export type Route = { kind: 'project'; slug: string } | { kind: 'supplier'; id: string };
+export type Route = { kind: 'project'; slug: string } | { kind: 'supplier'; id: string } | { kind: 'cierre' };
 export type Overlay =
   | { kind: 'capture'; project?: string; tag?: string }
   | { kind: 'present'; slug: string }
@@ -25,7 +25,7 @@ let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<() => void>();
 
 function hashOf(s: NavState) {
-  const parts = [s.tab, ...s.stack.map((r) => (r.kind === 'project' ? r.slug : 'proveedor')), ...s.overlays.map((o) => OVERLAY_HASH[o.kind])];
+  const parts = [s.tab, ...s.stack.map((r) => (r.kind === 'project' ? r.slug : r.kind === 'supplier' ? 'ficha' : 'cierre')), ...s.overlays.map((o) => OVERLAY_HASH[o.kind])];
   return `#/${parts.join('/')}`;
 }
 

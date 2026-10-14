@@ -1,4 +1,4 @@
-// Genera private/content.sql con el contenido privado (proyectos, equipo, horario) de private/content/
+// Genera private/content.sql con el contenido privado (proyectos, equipo, horario, configuración de fichas) de private/content/
 // para pegarlo en el SQL Editor de Supabase. private/ está en .gitignore: nunca llega al repo ni a la web.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,7 +12,7 @@ const projects = readdirSync(join(dir, 'projects'))
   .filter((f) => f.endsWith('.json'))
   .map((f) => read('projects', f))
   .sort((a, b) => a.order - b.order);
-const rows = { projects, team: read('team.json'), horario: read('horario.json') };
+const rows = { projects, team: read('team.json'), horario: read('horario.json'), config: read('config.json') };
 
 const literal = (v) => {
   const s = JSON.stringify(v);
@@ -29,4 +29,4 @@ on conflict (key) do update set data = excluded.data, updated_at = now()
 `;
 
 writeFileSync(join(root, 'content.sql'), sql);
-console.log(`private/content.sql: ${projects.length} proyectos, equipo y horario (${Math.round(sql.length / 1024)} KB)`);
+console.log(`private/content.sql: ${projects.length} proyectos, equipo, horario y configuración (${Math.round(sql.length / 1024)} KB)`);

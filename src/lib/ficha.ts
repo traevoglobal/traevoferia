@@ -98,7 +98,7 @@ export function missing(get: Get): string[] {
   return out;
 }
 
-/** Identificador pabellón-stand ("21.2-A01"). */
+/** Identificador "<pabellón>-<stand>". */
 export function fichaId(get: Get): string {
   const b = get('booth').trim().toUpperCase();
   const h = get('hall');

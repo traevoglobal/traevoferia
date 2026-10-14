@@ -8,7 +8,7 @@ import { CONFIG, PROJECT_BY_SLUG } from '../lib/content';
 import { HALL } from '../lib/prefs';
 import { navBack } from '../lib/nav';
 
-/** "Estoy en: 21.2": pabellón activo, lo heredan las fichas nuevas. */
+/** "Estoy en: <pabellón>": pabellón activo, lo heredan las fichas nuevas. */
 function HallPicker() {
   const hall = HALL.use();
   const halls = CONFIG?.halls ?? [];

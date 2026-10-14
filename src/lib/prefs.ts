@@ -1,7 +1,7 @@
 /* Preferencias de este móvil, compartidas entre pantallas. */
 import { storedValue } from './util';
 
-/** Pabellón en el que estoy ("Estoy en: 21.2"). Toda ficha nueva lo hereda. */
+/** Pabellón en el que estoy ("Estoy en: …"). Toda ficha nueva lo hereda. */
 export const HALL = storedValue<string>('feria.hall', '');
 /** Última vía usada: se preselecciona en Captar. */
 export const LAST_VIA = storedValue<string>('feria.lastVia', '');

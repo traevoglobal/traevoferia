@@ -102,7 +102,7 @@ export function Suppliers() {
       <h1 className="large-title">Fichas</h1>
       <div className="search">
         <Search size={17} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="21.2-A01, empresa, WeChat, nota…" type="search" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pabellón-stand, empresa, WeChat, nota…" type="search" />
         {q && (
           <button className="icon-btn tiny" onClick={() => setQ('')} aria-label="Borrar">
             <X size={14} />

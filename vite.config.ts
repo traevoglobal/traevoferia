@@ -24,14 +24,14 @@ export default defineConfig({
       manifest: {
         name: 'Traevo Feria',
         short_name: 'Feria',
-        description: 'Captura de proveedores en la Feria de Cantón',
+        description: 'Presentar, proveedores e itinerario en la Feria de Cantón',
         lang: 'es',
         start_url: site.base,
         scope: site.base,
         display: 'standalone',
         orientation: 'portrait',
-        theme_color: '#C2302A',
-        background_color: '#F2F2F7',
+        theme_color: '#000000',
+        background_color: '#000000',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },

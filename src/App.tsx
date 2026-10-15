@@ -1,30 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { CalendarDays, Camera, Clock, Factory, FolderOpen, TriangleAlert } from 'lucide-react';
+import { CalendarClock, Factory, Presentation as PresentIcon, QrCode, TriangleAlert } from 'lucide-react';
 import { Ctx, type AppCtx } from './ctx';
 import { AUTH_STORAGE_KEY, setMyId, supabase } from './lib/supabase';
 import { db } from './lib/db';
 import { ensureProfile, startSync } from './lib/sync';
 import { navBack, keptStack, navInit, navOpen, navPush, navTab, useNav, type Overlay, type Tab } from './lib/nav';
 import { useToast } from './lib/toast';
-import { useLive } from './lib/util';
+import { useLive, uuid } from './lib/util';
 import { loadContent, useContentVersion } from './lib/content';
-import { draftHasContent } from './lib/ficha';
-import { applyTheme, THEME } from './lib/prefs';
 import { PhotoViewer } from './components/ui';
 import { Login, NameSheet, ProfileSheet } from './screens/Auth';
-import { Today } from './screens/Today';
-import { ProjectDetail, Projects } from './screens/Projects';
-import { SupplierDetail, Suppliers } from './screens/Suppliers';
-import { Horario } from './screens/Horario';
-import { Cierre } from './screens/Cierre';
-import { CaptureSheet } from './screens/Capture';
-import { Presentation } from './screens/Share';
+import { LineaList, Lineas, Presentation } from './screens/Presentar';
+import { FichaSheet, Proveedores } from './screens/Proveedores';
+import { Itinerario } from './screens/Itinerario';
+import { Tarjeta } from './screens/Tarjeta';
 
-const TABS: Tab[] = ['hoy', 'proyectos', 'proveedores', 'horario'];
+const TABS: Tab[] = ['presentar', 'proveedores', 'itinerario', 'tarjeta'];
 
 /** Sesión guardada en el móvil. supabase-js la da por nula si el token caducó y no hay red para renovarlo,
-    pero no la borra: la usamos para seguir captando sin conexión. Se renueva sola al volver la red. */
+    pero no la borra: la usamos para seguir usando la app sin conexión. Se renueva sola al volver la red. */
 function storedSession(): Session | null {
   try {
     const s = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) ?? 'null') as Session | null;
@@ -55,10 +50,8 @@ function ToastHost() {
 export default function App() {
   // Arranque inmediato con la sesión guardada: sin red, getSession tarda ~20 s en rendirse.
   const [session, setSession] = useState<Session | null | undefined>(() => storedSession() ?? undefined);
-  // Contenido privado guardado en el móvil (proyectos, equipo, horario): se carga antes de pintar.
+  // Contenido privado guardado en el móvil: se carga antes de pintar.
   const [ready, setReady] = useState(false);
-  const theme = THEME.use();
-  useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
     void loadContent()
       .catch(() => {})
@@ -93,9 +86,6 @@ function Main({ userId }: { userId: string }) {
   const nav = useNav();
   const tab = nav.tab;
 
-  const draft = useLive(() => db.drafts.get('current'), [], undefined);
-  const hasDraft = !!draft && draftHasContent(draft);
-
   useEffect(() => {
     const stop = startSync();
     ensureProfile(userId)
@@ -115,37 +105,33 @@ function Main({ userId }: { userId: string }) {
       profiles,
       push: navPush,
       back: navBack,
-      openCapture: () => {
-        const open = [...nav.stack].reverse().find((r) => r.kind === 'project');
-        navOpen({ kind: 'capture', project: open?.kind === 'project' ? open.slug : undefined });
-      },
-      openCaptureTag: (tag) => navOpen({ kind: 'capture', tag }),
-      openPresent: (slug) => navOpen({ kind: 'present', slug }),
+      openFicha: (o) => navOpen({ kind: 'ficha', id: o?.id ?? uuid(), proyecto: o?.proyecto }),
+      openPresent: (id) => navOpen({ kind: 'present', id, ficha: uuid() }),
       openViewer: (paths, index) => navOpen({ kind: 'viewer', paths, index }),
       openProfile: () => navOpen({ kind: 'profile' }),
     }),
-    [userId, me, profiles, nav.stack],
+    [userId, me, profiles],
   );
 
   const overlay = (o: Overlay, i: number) => {
     switch (o.kind) {
-      case 'capture':
-        return <CaptureSheet key={i} project={o.project} tag={o.tag} onClose={navBack} />;
+      case 'present':
+        return <Presentation key={i} id={o.id} ficha={o.ficha} onExit={navBack} />;
+      case 'ficha':
+        return <FichaSheet key={`${i}-${o.id}`} id={o.id} proyecto={o.proyecto} onClose={navBack} />;
       case 'viewer':
         return <PhotoViewer key={i} paths={o.paths} index={o.index} onClose={navBack} />;
       case 'profile':
         return <ProfileSheet key={i} profile={me} myId={userId} onClose={navBack} />;
-      case 'present':
-        return <Presentation key={i} slug={o.slug} onExit={navBack} />;
     }
   };
 
   const root = (t: Tab) =>
-    t === 'hoy' ? <Today /> : t === 'proyectos' ? <Projects /> : t === 'proveedores' ? <Suppliers /> : <Horario />;
+    t === 'presentar' ? <Lineas /> : t === 'proveedores' ? <Proveedores /> : t === 'itinerario' ? <Itinerario /> : <Tarjeta />;
 
-  const tabBtn = (t: Tab, label: string, Icon: typeof CalendarDays) => (
+  const tabBtn = (t: Tab, label: string, Icon: typeof Factory) => (
     <button className={`tab ${tab === t ? 'on' : ''}`} onClick={() => navTab(t)}>
-      <Icon size={25} strokeWidth={tab === t ? 2.3 : 1.8} />
+      <Icon size={26} strokeWidth={tab === t ? 2.4 : 1.9} />
       <span>{label}</span>
     </button>
   );
@@ -157,23 +143,17 @@ function Main({ userId }: { userId: string }) {
           <div key={t} className={`tab-pane ${t === tab ? 'active' : ''}`}>
             <div className="view">{root(t)}</div>
             {keptStack(t).map((r, i) => (
-              <div key={`${i}-${r.kind === 'project' ? r.slug : r.kind === 'supplier' ? r.id : r.kind}`} className="view pushed">
-                {r.kind === 'project' ? <ProjectDetail slug={r.slug} /> : r.kind === 'supplier' ? <SupplierDetail id={r.id} /> : <Cierre />}
+              <div key={`${i}-${r.linea}`} className="view pushed">
+                <LineaList linea={r.linea} />
               </div>
             ))}
           </div>
         ))}
         <nav className="tabbar">
-          {tabBtn('hoy', 'Hoy', CalendarDays)}
-          {tabBtn('proyectos', 'Proyectos', FolderOpen)}
-          <button className="tab" onClick={ctx.openCapture} aria-label="Captar">
-            <span className="capture-btn">
-              <Camera size={28} strokeWidth={2.2} />
-              {hasDraft && <i className="badge" />}
-            </span>
-          </button>
-          {tabBtn('proveedores', 'Fichas', Factory)}
-          {tabBtn('horario', 'Horario', Clock)}
+          {tabBtn('presentar', 'Presentar', PresentIcon)}
+          {tabBtn('proveedores', 'Proveedores', Factory)}
+          {tabBtn('itinerario', 'Itinerario', CalendarClock)}
+          {tabBtn('tarjeta', 'Mi tarjeta', QrCode)}
         </nav>
       </div>
 

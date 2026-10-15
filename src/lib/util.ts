@@ -135,3 +135,30 @@ export async function shareOrDownload(file: File): Promise<void> {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+/** Fecha AAAA-MM-DD en la zona del móvil. */
+export function localDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+/** "Sáb 17" de una fecha AAAA-MM-DD. */
+export function diaLabel(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return y ? `${DIAS[new Date(y, m - 1, d).getDay()]} ${d}` : date;
+}
+
+const CN = 8 * 3600_000;
+/** Fecha AAAA-MM-DD en China, sea cual sea la zona horaria del móvil. */
+export const chinaDate = (ms: number) => new Date(ms + CN).toISOString().slice(0, 10);
+export const chinaMs = (date: string, hhmm: string) => Date.parse(`${date}T${hhmm}:00+08:00`);
+
+export function useNow(every = 30_000) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), every);
+    return () => clearInterval(t);
+  }, [every]);
+  return now;
+}

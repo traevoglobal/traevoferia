@@ -2,10 +2,11 @@ import { useSyncExternalStore } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { db, getMeta, setMeta } from './db';
 import { getMyId, supabase } from './supabase';
-import { TEXT_FIELDS, type LocalNote, type LocalSupplier, type Profile } from './types';
+import { TEXT_FIELDS, type LocalSupplier, type Profile } from './types';
 import { useLive } from './util';
 import { storeContent } from './content';
-import { thumbPath } from './photos';
+import { prefetchThumbs, thumbPath } from './photos';
+import { syncAssets } from './assets';
 
 /* ---------- Estado ---------- */
 type Status = { online: boolean; syncing: boolean; error: string | null };
@@ -28,12 +29,7 @@ export function useSyncStatus(): Status {
 }
 
 export function usePendingCount(): number {
-  return useLive(
-    async () =>
-      (await db.suppliers.where('_dirty').equals(1).count()) + (await db.notes.where('_dirty').equals(1).count()),
-    [],
-    0,
-  );
+  return useLive(() => db.suppliers.where('_dirty').equals(1).count(), [], 0);
 }
 
 const syncedHandlers = new Set<() => void>();
@@ -85,28 +81,6 @@ export async function mergeSuppliers(rows: any[]) {
       const local = await db.suppliers.get(remote.id);
       if (local && Date.parse(local.updated_at) > Date.parse(remote.updated_at)) continue;
       await db.suppliers.put(remote);
-    }
-  });
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function mergeNotes(rows: any[]) {
-  if (!rows.length) return;
-  await db.transaction('rw', db.notes, async () => {
-    for (const r of rows) {
-      if (!r?.project_slug) continue;
-      const remote: LocalNote = {
-        project_slug: r.project_slug,
-        target: str(r.target),
-        competition: str(r.competition),
-        conclusions: str(r.conclusions),
-        updated_by: str(r.updated_by),
-        updated_at: iso(r.updated_at),
-        _dirty: 0,
-      };
-      const local = await db.notes.get(remote.project_slug);
-      if (local && Date.parse(local.updated_at) > Date.parse(remote.updated_at)) continue;
-      await db.notes.put(remote);
     }
   });
 }
@@ -189,25 +163,6 @@ async function pushSuppliers(): Promise<string | null> {
   return err;
 }
 
-async function pushNotes(): Promise<string | null> {
-  let err: string | null = null;
-  const dirty = await db.notes.where('_dirty').equals(1).toArray();
-  for (const n of dirty) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { _dirty, ...row } = n;
-    const { error } = await supabase.from('project_notes').upsert({ ...row, updated_by: row.updated_by || null });
-    if (error) {
-      err = error.message;
-      continue;
-    }
-    await db.transaction('rw', db.notes, async () => {
-      const cur = await db.notes.get(n.project_slug);
-      if (cur && cur.updated_at === n.updated_at) await db.notes.update(n.project_slug, { _dirty: 0 });
-    });
-  }
-  return err;
-}
-
 /* ---------- Pull ---------- */
 async function pullSuppliers() {
   let since = await getMeta<string>('suppliersSyncedAt', '1970-01-01T00:00:00Z');
@@ -232,21 +187,16 @@ async function pullSuppliers() {
   }
 }
 
-async function pullNotes() {
-  const { data, error } = await supabase.from('project_notes').select('*');
-  if (error) throw error;
-  await mergeNotes(data ?? []);
-}
-
 /* ---------- Motor ---------- */
 let running: Promise<void> | null = null;
 let again = false;
 
-/** Contenido privado: pocas filas, se descarga entero y solo se guarda si cambió. */
+/** Contenido privado: pocas filas, se descarga entero y solo se guarda si cambió; luego sus imágenes. */
 async function pullContent() {
   const { data, error } = await supabase.from('feria_content').select('key, data, updated_at');
   if (error) throw error;
   await storeContent(data ?? []);
+  await syncAssets();
 }
 
 export function syncNow(): Promise<void> {
@@ -279,14 +229,19 @@ async function syncOnce() {
   if (!getMyId()) return;
   setStatus({ online: true, syncing: true });
   try {
+    // Una sola comprobación de sesión (renueva el token si caducó). Si el servidor no responde, se deja
+    // para el siguiente ciclo: si no, cada petición esperaría su propio intento de renovación.
+    const { data: auth, error: authError } = await supabase.auth.getSession();
+    if (authError || !auth.session) return setStatus({ syncing: false, error: 'Sin conexión con el servidor' });
     const e1 = await pushSuppliers();
-    const e2 = await pushNotes();
     await pullProfiles().catch(() => {});
     await pullContent().catch((e) => console.warn('Contenido privado:', e));
     await pullSuppliers();
-    await pullNotes();
-    setStatus({ syncing: false, error: e1 ?? e2 });
+    setStatus({ syncing: false, error: e1 });
     syncedHandlers.forEach((f) => f());
+    // Después, sin bloquear el indicador: miniaturas de las fichas del otro móvil para verlas sin red.
+    const others = await db.suppliers.filter((s) => !s.deleted && s.photos.length > 0).toArray();
+    await prefetchThumbs(others.flatMap((s) => s.photos.map((p) => p.path))).catch(() => {});
   } catch (e) {
     setStatus({ syncing: false, error: e instanceof Error ? e.message : String(e) });
   }
@@ -306,7 +261,7 @@ export function startSync(): () => void {
   document.addEventListener('visibilitychange', onVisible);
 
   const interval = setInterval(async () => {
-    const n = (await db.suppliers.where('_dirty').equals(1).count()) + (await db.notes.where('_dirty').equals(1).count());
+    const n = await db.suppliers.where('_dirty').equals(1).count();
     if (n > 0) void syncNow();
   }, 30_000);
 
@@ -314,9 +269,6 @@ export function startSync(): () => void {
     .channel('feria-db')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, (p) => {
       if (p.new && 'id' in p.new) void mergeSuppliers([p.new]);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'project_notes' }, (p) => {
-      if (p.new && 'project_slug' in p.new) void mergeNotes([p.new]);
     })
     .subscribe();
 

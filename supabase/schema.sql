@@ -204,7 +204,7 @@ alter table public.suppliers add column if not exists extra jsonb not null defau
 alter table public.suppliers drop column if exists ai_status, drop column if exists ai_summary;
 drop table if exists public.ai_cache;
 
--- 8b) Contenido privado de la app (proyectos, equipo, horario). Solo lectura para miembros;
+-- 8b) Contenido privado de la app (proyectos, comun, itinerario, tarjeta). Solo lectura para miembros;
 --     se escribe desde el SQL Editor con private/content.sql (npm run content:sql). Nunca en el repo.
 create table if not exists public.feria_content (
   key text primary key,

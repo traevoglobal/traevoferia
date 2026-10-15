@@ -2,37 +2,40 @@
    Cada entrada guarda la pantalla completa (pestaña, pila, capas abiertas) y se refleja en el hash.
    Atrás (gesto, botón o app) = history.back(); al llegar a una entrada se pinta lo que guarda. */
 import { useSyncExternalStore } from 'react';
+import type { Linea } from './types';
 
-export type Tab = 'hoy' | 'proyectos' | 'proveedores' | 'horario';
-export type Route = { kind: 'project'; slug: string } | { kind: 'supplier'; id: string } | { kind: 'cierre' };
+export type Tab = 'presentar' | 'proveedores' | 'itinerario' | 'tarjeta';
+export type Route = { kind: 'linea'; linea: Linea };
 export type Overlay =
-  | { kind: 'capture'; project?: string; tag?: string }
-  | { kind: 'present'; slug: string }
+  /** Presentación a pantalla completa; `ficha` es la ficha que abre su botón Notas (la misma toda la presentación). */
+  | { kind: 'present'; id: string; ficha: string }
+  /** Ficha de proveedor. `proyecto` precarga el proyecto si la ficha aún no existe. */
+  | { kind: 'ficha'; id: string; proyecto?: string }
   | { kind: 'viewer'; paths: string[]; index: number }
   | { kind: 'profile' };
 export type NavState = { tab: Tab; stack: Route[]; overlays: Overlay[]; depth: number };
 
 const OVERLAY_HASH: Record<Overlay['kind'], string> = {
-  capture: 'captar', present: 'presentar', viewer: 'foto', profile: 'perfil',
+  present: 'presentacion', ficha: 'ficha', viewer: 'foto', profile: 'perfil',
 };
 
-const ROOT: NavState = { tab: 'hoy', stack: [], overlays: [], depth: 0 };
+const ROOT: NavState = { tab: 'presentar', stack: [], overlays: [], depth: 0 };
 let state: NavState = ROOT;
 /** Pila de cada pestaña, para recuperarla al volver a ella. */
-const kept: Record<Tab, Route[]> = { hoy: [], proyectos: [], proveedores: [], horario: [] };
+const kept: Record<Tab, Route[]> = { presentar: [], proveedores: [], itinerario: [], tarjeta: [] };
 let pendingTab: Tab | null = null;
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<() => void>();
 
 function hashOf(s: NavState) {
-  const parts = [s.tab, ...s.stack.map((r) => (r.kind === 'project' ? r.slug : r.kind === 'supplier' ? 'ficha' : 'cierre')), ...s.overlays.map((o) => OVERLAY_HASH[o.kind])];
+  const parts = [s.tab, ...s.stack.map((r) => r.linea), ...s.overlays.map((o) => OVERLAY_HASH[o.kind])];
   return `#/${parts.join('/')}`;
 }
 
-function isNavState(v: unknown): v is NavState & { feria: 1 } {
-  // La pestaña debe existir aún (una entrada vieja puede apuntar a una pestaña ya eliminada).
+function isNavState(v: unknown): v is NavState & { feria: 2 } {
+  // Versión 2: las entradas de la app anterior (otras pestañas y pantallas) no valen.
   const s = v as { feria?: number; tab?: unknown } | null;
-  return !!s && s.feria === 1 && typeof s.tab === 'string' && s.tab in kept;
+  return !!s && s.feria === 2 && typeof s.tab === 'string' && s.tab in kept;
 }
 
 function set(s: NavState) {
@@ -42,7 +45,7 @@ function set(s: NavState) {
 }
 
 function write(s: NavState, mode: 'push' | 'replace') {
-  const entry = { ...s, feria: 1 };
+  const entry = { ...s, feria: 2 };
   if (mode === 'push') history.pushState(entry, '', hashOf(s));
   else history.replaceState(entry, '', hashOf(s));
   set(s);

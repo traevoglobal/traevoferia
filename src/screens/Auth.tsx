@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { AUTH_STORAGE_KEY, supabase, supabaseConfigured } from '../lib/supabase';
 import { saveProfile } from '../lib/sync';
-import { asset, presenterFor, setPresenter, TEAM } from '../lib/content';
+import { asset } from '../lib/content';
 import type { Profile } from '../lib/types';
 import { toast } from '../lib/toast';
 import { PALETTE } from '../lib/util';
-import { Avatar, Segmented, Sheet } from '../components/ui';
+import { Avatar, Sheet } from '../components/ui';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -95,7 +95,7 @@ function ProfileForm({ profile, onDone, cta }: { profile: Profile; onDone: () =>
 export function NameSheet({ profile }: { profile: Profile }) {
   return (
     <Sheet title="¿Cómo te llamas?" onClose={() => {}}>
-      <p className="pad muted">Se mostrará junto a todo lo que subas.</p>
+      <p className="pad muted">Se mostrará junto a todo lo que subas y elige tu tarjeta e itinerario.</p>
       <ProfileForm profile={profile} onDone={() => {}} cta="Continuar" />
     </Sheet>
   );
@@ -103,7 +103,6 @@ export function NameSheet({ profile }: { profile: Profile }) {
 
 export function ProfileSheet({ profile, myId, onClose }: { profile?: Profile; myId: string; onClose: () => void }) {
   const p = profile ?? { id: myId, name: '', color: '' };
-  const [presenter, setP] = useState(() => presenterFor(profile).slug);
   const logout = async () => {
     if (!confirm('¿Cerrar sesión? Lo pendiente se queda guardado en este móvil.')) return;
     onClose();
@@ -128,17 +127,6 @@ export function ProfileSheet({ profile, myId, onClose }: { profile?: Profile; my
           onClose();
         }}
       />
-      <div className="group">
-        <div className="group-title">Tarjeta de contacto en los QR</div>
-        <Segmented
-          value={presenter}
-          options={TEAM.map((t) => [t.slug, t.name] as [string, string])}
-          onChange={(v) => {
-            setP(v);
-            setPresenter(v);
-          }}
-        />
-      </div>
       <div className="pad">
         <button className="btn plain danger" onClick={logout}>
           <LogOut size={18} /> Cerrar sesión

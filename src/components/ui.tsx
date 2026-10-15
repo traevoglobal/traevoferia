@@ -1,39 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronLeft, CloudOff, MapPin, RefreshCw, Check, Star, X } from 'lucide-react';
+import { ChevronLeft, CloudOff, RefreshCw, Check, X } from 'lucide-react';
 import { useApp } from '../ctx';
 import { syncNow, usePendingCount, useSyncStatus } from '../lib/sync';
 import { usePhotoUrl } from '../lib/photos';
 import { colorFor, initials } from '../lib/util';
-import { CONFIG, PROJECT_BY_SLUG } from '../lib/content';
-import { HALL } from '../lib/prefs';
 import { navBack } from '../lib/nav';
-
-/** "Estoy en: <pabellón>": pabellón activo, lo heredan las fichas nuevas. */
-function HallPicker() {
-  const hall = HALL.use();
-  const halls = CONFIG?.halls ?? [];
-  if (!halls.length) return null;
-  return (
-    <label className={`hall-pick ${hall ? '' : 'empty'}`}>
-      <MapPin size={15} />
-      <span>{hall || '¿Dónde estás?'}</span>
-      <ChevronDown size={14} />
-      <select value={hall} onChange={(e) => HALL.set(e.target.value)} aria-label="Estoy en">
-        <option value="">— Sin pabellón —</option>
-        {halls.map((h) => (
-          <option key={h}>{h}</option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 export function NavBar({ back, title, right, center }: { back?: string; title?: string; right?: ReactNode; center?: ReactNode }) {
   const { back: goBack } = useApp();
   return (
     <header className="nav">
       <div className="nav-left">
-        {back === undefined && <HallPicker />}
         {back !== undefined && (
           <button className="back" onClick={goBack}>
             <ChevronLeft size={28} strokeWidth={2.4} />
@@ -51,7 +28,9 @@ export function SyncPill() {
   const st = useSyncStatus();
   const n = usePendingCount();
   const pend = n === 1 ? '1 pendiente' : `${n} pendientes`;
-  if (!st.online)
+  // Red que "está" pero no llega al servidor (wifi de la feria): para el usuario es lo mismo que sin conexión.
+  const unreachable = !st.syncing && !!st.error && /fetch|conexi|servidor|timeout|network|abort/i.test(st.error);
+  if (!st.online || unreachable)
     return (
       <span className="pill off">
         <CloudOff size={13} /> Sin conexión{n ? `, ${pend}` : ''}
@@ -82,69 +61,6 @@ export function Avatar({ id, size = 28 }: { id?: string; size?: number }) {
     >
       {initials(p?.name)}
     </span>
-  );
-}
-
-export function Person({ id }: { id?: string }) {
-  const { profiles } = useApp();
-  return (
-    <span className="person">
-      <Avatar id={id} size={20} />
-      {profiles.get(id ?? '')?.name || '—'}
-    </span>
-  );
-}
-
-export function Stars({ value, onChange, size = 14 }: { value: number; onChange?: (v: number) => void; size?: number }) {
-  return (
-    <span className={`stars ${onChange ? 'edit' : ''}`}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Star
-          key={i}
-          size={size}
-          fill={i <= value ? 'currentColor' : 'none'}
-          className={i <= value ? '' : 'off'}
-          onClick={onChange ? () => onChange(i === value ? 0 : i) : undefined}
-        />
-      ))}
-    </span>
-  );
-}
-
-export function ProjectDots({ ids }: { ids: string[] }) {
-  return (
-    <span className="dots">
-      {ids.map((s) => (
-        <i key={s} className="dot" style={{ background: PROJECT_BY_SLUG.get(s)?.color ?? '#999' }} />
-      ))}
-    </span>
-  );
-}
-
-/** Proyectos de un toque. Con `row`, en una fila; con `order`, los de uso reciente primero. */
-export function ProjectChips({ value, onChange, row, order }: { value: string[]; onChange: (v: string[]) => void; row?: boolean; order?: string[] }) {
-  const rank = (slug: string) => {
-    const i = order?.indexOf(slug) ?? -1;
-    return i < 0 ? 999 : i;
-  };
-  const all = [...PROJECT_BY_SLUG.values()].sort((a, b) => rank(a.slug) - rank(b.slug));
-  return (
-    <div className={`chips ${row ? 'row' : 'wrap'}`}>
-      {all.map((p) => {
-        const on = value.includes(p.slug);
-        return (
-          <button
-            key={p.slug}
-            className={`chip ${on ? 'on' : ''}`}
-            style={on ? { background: p.color, color: '#fff' } : undefined}
-            onClick={() => onChange(on ? value.filter((x) => x !== p.slug) : [...value, p.slug])}
-          >
-            {!on && <i className="dot" style={{ background: p.color }} />}
-            {p.name}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -200,43 +116,6 @@ export function Sheet({
         {foot && <div className="sheet-foot">{foot}</div>}
       </div>
     </>
-  );
-}
-
-/** Campo que guarda al salir (blur). */
-export function EditField({
-  label, value, onSave, multiline, placeholder, type, inputMode, action,
-}: {
-  label: string; value: string; onSave: (v: string) => void; multiline?: boolean; placeholder?: string;
-  type?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']; action?: ReactNode;
-}) {
-  const [v, setV] = useState(value);
-  const focused = useRef(false);
-  useEffect(() => {
-    if (!focused.current) setV(value);
-  }, [value]);
-  const commit = () => {
-    focused.current = false;
-    if (v !== value) onSave(v);
-  };
-  const common = {
-    value: v,
-    placeholder: placeholder ?? '—',
-    onFocus: () => (focused.current = true),
-    onBlur: commit,
-  };
-  return (
-    <div className="field">
-      <label>{label}</label>
-      <div className="field-row">
-        {multiline ? (
-          <AutoTextarea {...common} onChange={(e) => setV(e.target.value)} />
-        ) : (
-          <input {...common} type={type ?? 'text'} inputMode={inputMode} onChange={(e) => setV(e.target.value)} />
-        )}
-        {action}
-      </div>
-    </div>
   );
 }
 

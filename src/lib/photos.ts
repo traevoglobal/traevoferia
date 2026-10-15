@@ -217,3 +217,23 @@ export function useBlobUrl(blob?: Blob): string | undefined {
   }, [blob]);
   return url;
 }
+
+/** Deja en la caché del móvil las miniaturas de las fotos del otro móvil, para verlas en el listado sin red.
+    La caché del service worker guarda cada URL firmada (válida 7 días, recordada en Dexie). */
+export async function prefetchThumbs(paths: string[]) {
+  const done = new Set((await db.meta.get('thumbsCached'))?.value as string[] | undefined);
+  const todo: string[] = [];
+  for (const p of paths) if (!done.has(p) && !(await db.photos.get(p))) todo.push(p);
+  for (const p of todo) {
+    if (!navigator.onLine) break;
+    try {
+      const res = await fetch(await getSignedUrl(thumbPath(p)).catch(() => getSignedUrl(p)));
+      if (!res.ok) continue;
+      await res.blob();
+      done.add(p);
+    } catch {
+      /* se intenta en la siguiente sincronización */
+    }
+  }
+  if (todo.length) await db.meta.put({ key: 'thumbsCached', value: [...done] });
+}

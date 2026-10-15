@@ -10,10 +10,9 @@ export interface AppCtx {
   profiles: Map<string, Profile>;
   push: (r: Route) => void;
   back: () => void;
-  openCapture: () => void;
-  /** Captura precargada con la etiqueta de una franja del Horario. */
-  openCaptureTag: (tag: string) => void;
-  openPresent: (slug: string) => void;
+  /** Ficha nueva (opcionalmente con un proyecto) o existente si se pasa `id`. */
+  openFicha: (opts?: { id?: string; proyecto?: string }) => void;
+  openPresent: (id: string) => void;
   openViewer: (paths: string[], index: number) => void;
   openProfile: () => void;
 }

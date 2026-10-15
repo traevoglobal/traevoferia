@@ -1,6 +1,5 @@
 export interface PhotoRef {
   path: string;
-  /** Tipo de foto (id de config.photoKinds: wechat, placa…). */
   kind?: string;
 }
 
@@ -9,24 +8,19 @@ export interface AudioRef {
   secs: number;
 }
 
-/** Datos de la ficha que dependen de la configuración privada (jsonb `extra`). */
+/** Datos de la ficha que no tienen columna propia (jsonb `extra`). */
 export interface SupplierExtra {
-  hall?: string;
-  via?: string;
-  sector?: string;
   audios?: AudioRef[];
-  /** Ficha enlazada (la de otra vía creada desde esta, o de la que sale). */
-  link?: string;
-  /** Miembro al que se asigna (javi / rafa). */
-  owner?: string;
-  /** "La frase": el problema concreto. */
-  problem?: string;
-  /** Estado final del cierre (config.statuses). */
-  status?: string;
-  /** Campos rápidos y de cierre definidos en la configuración. */
-  [key: string]: string | AudioRef[] | undefined;
+  /** "Otra oportunidad": descripción en una línea (si existe, la ficha no es de un proyecto). */
+  otra?: string;
+  /** Campos clave del proyecto, por su nombre ("MOQ": "500"). */
+  campos?: Record<string, string>;
+  /** Preguntas del proyecto marcadas, por id. */
+  preguntas?: Record<string, boolean>;
+  [key: string]: unknown;
 }
 
+/** Columnas de texto de la tabla suppliers (el stand va en `booth`). */
 export const TEXT_FIELDS = [
   'company', 'company_zh', 'contact', 'role', 'wechat', 'phone', 'email', 'web', 'booth', 'city', 'kind',
   'products', 'price', 'moq', 'incoterm', 'lead_time', 'samples', 'agreement', 'next_step',
@@ -59,197 +53,83 @@ export interface LocalPhoto {
   uploaded: 0 | 1;
 }
 
-export interface ProjectNote {
-  project_slug: string;
-  target: string;
-  competition: string;
-  conclusions: string;
-  updated_by: string;
-  updated_at: string;
-}
-export type LocalNote = ProjectNote & { _dirty: 0 | 1 };
-
 export interface Profile {
   id: string;
   name: string;
   color: string;
 }
 
-export interface DraftPhoto {
-  id: string;
-  blob: Blob;
-  thumb: Blob;
-  kind?: string;
-}
-
-export interface DraftAudio {
-  id: string;
-  blob: Blob;
-  secs: number;
-}
-
-export interface Draft {
-  id: 'current';
-  photos: DraftPhoto[];
-  note: string;
-  project_ids: string[];
-  event: string;
-  /** Etiqueta de la franja del Horario desde la que se abrió ("<día> <hora> <persona> · <lugar corto>"). */
-  tags?: string[];
-  audios?: DraftAudio[];
-  /** Campos de texto de la ficha (stand, empresa, precio…). */
-  fields?: Partial<Record<TextField, string>>;
-  extra?: SupplierExtra;
-}
-
-/* ---------- Configuración privada de las fichas (contenido "config") ---------- */
-export type Option = [value: string, label: string];
-
-/** Campo de la ficha: texto de la ficha (TEXT_FIELDS) o clave de `extra`. Con options, botones de un toque. */
-export interface FieldDef {
-  key: string;
-  label: string;
-  options?: Option[];
-  /** Opción a destacar (el mejor lead). */
-  best?: string;
-  /** Va plegado en Captar ("Más"). */
-  more?: boolean;
-  /** Solo se muestra si otra clave tiene ese valor (p. ej. un sector). */
-  showIf?: Record<string, string>;
-}
-
-export interface Cond {
-  key: string;
-  in: string[];
-}
-
-export interface ScoreItem {
-  points: number;
-  all?: Cond[];
-  any?: Cond[];
-  none?: Cond[];
-}
-
-export interface ViaDef {
-  id: string;
-  label: string;
-  hint: string;
-  color: string;
-  sectorLabel?: string;
-  sectors: string[];
-  /** Campos rápidos en el stand. */
-  fields: FieldDef[];
-  /** Campos del cierre de la noche. */
-  close?: FieldDef[];
-  /** Pregunta de "la frase". Si existe, una ficha sin frase está incompleta. */
-  problem?: string;
-  /** Botón que crea una ficha enlazada de otra vía, asignada a alguien. */
-  spawn?: { label: string; via: string; owner: string };
-  /** La ficha queda descartada si se cumple alguna condición. */
-  discard?: { any: Cond[]; label: string; tone?: 'gray' | 'red' }[];
-  /** Al elegir ciertos valores, fija otros campos y bloquea opciones. */
-  locks?: { when: Cond; set: Record<string, string>; disable: Record<string, string[]> }[];
-  score?: { max: number; min: number; items: ScoreItem[] };
-}
-
-export interface FichaConfig {
-  halls: string[];
-  photoKinds: Option[];
-  vias: ViaDef[];
-  statuses: Option[];
-  /** [etiqueta, URL con {q} (nombre) o {zh} (nombre en chino)]. */
-  links: Option[];
-}
-
-export interface ProjectText {
-  title: string;
-  summary: string;
-  needs: string[];
-  requirements: string[];
-  questions: string[];
-}
-
-export interface Project {
-  slug: string;
-  group: 'traevo' | 'clientes';
-  name: string;
-  client: string;
-  color: string;
-  order: number;
-  es: ProjectText;
-  zh: ProjectText;
-  photos: string[];
-}
-
-/** Fila de contenido privado (Supabase feria_content → Dexie): 'projects', 'team', 'horario'. */
+/** Fila de contenido privado (Supabase feria_content → Dexie): proyectos, comun, itinerario, tarjeta. */
 export interface ContentRow {
   key: string;
   data: unknown;
   updated_at: string;
 }
 
-/* ---------- Horario (contenido privado "horario") ---------- */
-export type Who = 'javi' | 'rafa' | 'ambos';
-export type Member = Exclude<Who, 'ambos'>;
+/** Imagen del contenido privado (bucket photos, content/img/…) guardada en el móvil. */
+export interface Asset {
+  path: string;
+  blob: Blob;
+  stamp: string;
+}
 
-export interface SlotCounter {
+/* ---------- Contenido privado (private/data/*.js) ---------- */
+export type Linea = 'access' | 'sourcing';
+
+export interface Slide {
+  titulo_es: string;
+  titulo_zh: string;
+  bullets_es: string[];
+  bullets_zh: string[];
+  imagen?: string;
+}
+
+export interface Pregunta {
   id: string;
-  label: string;
-  goal: number;
-  /** Cuenta las fichas reales de la franja; el +/− queda como ajuste manual de respaldo. */
-  fichas?: boolean;
-  /** Solo fichas de esta vía (y con su color). */
-  via?: string;
-  /** Solo fichas con esta clave de `extra` rellena (p. ej. "problem"). */
-  with?: string;
+  es: string;
+  zh: string;
 }
 
-export interface Slot {
+export interface Proyecto {
   id: string;
-  start: string;
-  end?: string;
-  who: Who;
-  place: string;
-  goal: string;
-  detail?: string;
-  /** Lugar corto (sin comas) para etiquetar la ficha. Si existe, la franja tiene "Nueva ficha". */
-  short?: string;
-  counters?: SlotCounter[];
+  linea: Linea;
+  nombre_es: string;
+  nombre_zh: string;
+  resumen_es: string;
+  resumen_zh: string;
+  slides: Slide[];
+  preguntas: Pregunta[];
+  campos_clave: string[];
 }
 
-export interface PlanDay {
+export interface Comun {
+  lineas: Partial<Record<Linea, { desc_es: string; desc_zh: string }>>;
+  slides: Slide[];
+}
+
+export interface Bloque {
   id: string;
-  date: string;
-  label: string;
-  title: string;
-  note?: string;
-  slots: Slot[];
+  dia: string;
+  inicio: string;
+  fin?: string;
+  /** "javi", "rafa" o "" (los dos). */
+  quien?: string;
+  lugar: string;
+  proyecto?: string;
+  objetivo: string;
+  vigilar?: string[];
 }
 
-export interface Horario {
-  days: PlanDay[];
-  clusterDays: { id: string; date: string; title: string }[];
-  clusterNote: string;
-  rules: string[];
-  clusters: string[];
-  /** Distritos que cuentan como el mismo clúster (shunde → foshan). */
-  aliases: Record<string, string>;
-  deliverables: { who: Member; items: string[] }[];
+export interface Persona {
+  quien: string;
+  nombre: string;
+  wechat_id: string;
+  wechat_qr?: string;
+  alipay_qr?: string;
 }
 
-export interface Visit {
-  fabrica: string;
-  ciudad: string;
-  hora: string;
-  contacto: string;
-  estado: 'pedida' | 'confirmada' | 'hecha';
-}
-
-export interface TeamMember {
-  slug: string;
-  name: string;
-  wechat: string;
-  wechatQr: string;
-  whatsapp: string;
-  email: string;
+export interface Tarjeta {
+  empresa_en: string;
+  empresa_zh: string;
+  personas: Persona[];
 }

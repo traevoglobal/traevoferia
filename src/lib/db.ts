@@ -1,14 +1,13 @@
 import Dexie, { type Table } from 'dexie';
-import type { ContentRow, Draft, LocalNote, LocalPhoto, LocalSupplier, Profile } from './types';
+import type { Asset, ContentRow, LocalPhoto, LocalSupplier, Profile } from './types';
 
 class FeriaDB extends Dexie {
   suppliers!: Table<LocalSupplier, string>;
   photos!: Table<LocalPhoto, string>;
-  notes!: Table<LocalNote, string>;
   profiles!: Table<Profile, string>;
   signed!: Table<{ path: string; url: string; exp: number }, string>;
-  drafts!: Table<Draft, string>;
   content!: Table<ContentRow, string>;
+  assets!: Table<Asset, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
   constructor() {
@@ -34,9 +33,9 @@ class FeriaDB extends Dexie {
             delete s.ai_summary;
           }),
       );
-    // v3: contenido privado (proyectos, equipo, horario) para usarlo sin red.
+    // v3: contenido privado para usarlo sin red.
     this.version(3).stores({ content: 'key' });
-    // v4: datos de vía, campos rápidos y cierre en `extra`.
+    // v4: `extra` siempre presente.
     this.version(4)
       .stores({ suppliers: 'id, _dirty, created_at' })
       .upgrade((tx) =>
@@ -47,6 +46,8 @@ class FeriaDB extends Dexie {
             if (!s.extra || typeof s.extra !== 'object') s.extra = {};
           }),
       );
+    // v5: imágenes del contenido en el móvil; fuera borradores y notas de proyecto (la ficha se autoguarda).
+    this.version(5).stores({ assets: 'path', drafts: null, notes: null });
   }
 }
 

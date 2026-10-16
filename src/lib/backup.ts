@@ -2,7 +2,8 @@
    Las fotos no viajan en el JSON (pesarían cientos de MB): van en Supabase y en cada móvil; el CSV y el
    JSON guardan la ruta de cada foto para localizarlas. */
 import { db } from './db';
-import { PROYECTO_BY_ID, PROYECTOS, proyectoLabel } from './content';
+import { LINEA_NOMBRE, PROYECTO_BY_ID, PROYECTOS, proyectoLabel } from './content';
+import { letraDe, motivoDe } from './semaforo';
 import { getMyId } from './supabase';
 import { normalizeSupplier, syncSoon } from './sync';
 import type { LocalSupplier, Profile } from './types';
@@ -26,7 +27,12 @@ function columns(rows: LocalSupplier[], who: Map<string, Profile>): Col[] {
     ['Hora', (s) => new Date(s.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })],
     ['Stand', (s) => s.booth.toUpperCase()],
     ['Proyecto', (s) => proyectoLabel(s.project_ids, s.extra.otra)],
-    ['Línea', (s) => PROYECTO_BY_ID.get(s.project_ids[0] ?? '')?.linea ?? ''],
+    ['Línea', (s) => {
+      const l = PROYECTO_BY_ID.get(s.project_ids[0] ?? '')?.linea;
+      return l ? LINEA_NOMBRE[l] : '';
+    }],
+    ['Semáforo', (s) => letraDe(s.rating)],
+    ['Motivo', (s) => motivoDe(s.tags)],
     ['Empresa', (s) => s.company],
     ['Contacto', (s) => s.contact],
     ['WeChat', (s) => s.wechat],

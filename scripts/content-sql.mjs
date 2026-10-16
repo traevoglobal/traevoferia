@@ -14,6 +14,7 @@ const { lineas, slides } = await load('comun.js');
 const { itinerario } = await load('itinerario.js');
 const { tarjeta } = await load('tarjeta.js');
 
+const LINEAS = ['access', 'sourcing', 'partners'];
 const errors = [];
 const warnings = [];
 const err = (where, msg) => errors.push(`${where}: ${msg}`);
@@ -36,7 +37,7 @@ for (const [i, p] of proyectos.entries()) {
   if (!str(p.id) || !/^[a-z0-9][a-z0-9-]*$/.test(p.id)) err(w, 'id en minúsculas, sin espacios ni acentos');
   if (ids.has(p.id)) err(w, 'id repetido');
   ids.add(p.id);
-  if (!['access', 'sourcing'].includes(p.linea)) err(w, 'linea debe ser "access" o "sourcing"');
+  if (!LINEAS.includes(p.linea)) err(w, 'linea debe ser "access", "sourcing" o "partners"');
   for (const k of ['nombre_es', 'nombre_zh', 'resumen_es', 'resumen_zh']) if (!str(p[k])) err(w, `falta ${k}`);
   if (!Array.isArray(p.slides)) err(w, 'slides debe ser una lista');
   else p.slides.forEach((s, j) => checkSlide(`${w}, slide ${j + 1}`, s));
@@ -49,6 +50,11 @@ for (const [i, p] of proyectos.entries()) {
   if (!Array.isArray(p.campos_clave ?? [])) err(w, 'campos_clave debe ser una lista');
 }
 slides.forEach((s, j) => checkSlide(`comun, slide ${j + 1}`, s));
+for (const [l, d] of Object.entries(lineas ?? {})) {
+  if (!LINEAS.includes(l)) err(`comun.lineas.${l}`, 'línea desconocida (access, sourcing o partners)');
+  if (d.slides !== undefined && !Array.isArray(d.slides)) err(`comun.lineas.${l}`, 'slides debe ser una lista');
+  else (d.slides ?? []).forEach((s, j) => checkSlide(`línea ${l}, slide ${j + 1}`, s));
+}
 
 const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
 const bids = new Set();

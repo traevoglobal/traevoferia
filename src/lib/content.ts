@@ -1,10 +1,14 @@
 import { useSyncExternalStore } from 'react';
-import type { Bloque, Comun, ContentRow, Profile, Proyecto, Tarjeta } from './types';
+import type { Bloque, Comun, ContentRow, Linea, Profile, Proyecto, Slide, Tarjeta } from './types';
 import { db } from './db';
 import { norm } from './util';
 
 /** Ruta de un archivo de public/ respetando el base path de GitHub Pages. */
 export const asset = (p: string) => (/^https?:/.test(p) ? p : `${import.meta.env.BASE_URL}${p.replace(/^\//, '')}`);
+
+/** Las tres líneas, en el orden en que se presentan. */
+export const LINEAS: Linea[] = ['access', 'sourcing', 'partners'];
+export const LINEA_NOMBRE: Record<Linea, string> = { access: 'TRAEVO ACCESS', sourcing: 'TRAEVO SOURCING', partners: 'TRAEVO PARTNERS' };
 
 /* Contenido privado (private/data/*.js → Supabase feria_content, solo miembros → Dexie para usarlo sin red).
    Nada de esto está en el repo ni en la web. Se lee como variables vivas; Main se vuelve a pintar cuando
@@ -30,7 +34,12 @@ function apply(rows: ContentRow[]) {
   }));
   PROYECTO_BY_ID = new Map(PROYECTOS.map((p) => [p.id, p]));
   const c = get('comun') as Partial<Comun> | undefined;
-  COMUN = { lineas: c?.lineas ?? {}, slides: list(c?.slides) };
+  const lineas: Comun['lineas'] = {};
+  for (const l of LINEAS) {
+    const d = c?.lineas?.[l];
+    if (d) lineas[l] = { ...d, slides: list<Slide>(d.slides) };
+  }
+  COMUN = { lineas, slides: list(c?.slides) };
   ITINERARIO = list<Bloque>(get('itinerario'));
   TARJETA = (get('tarjeta') as Tarjeta | undefined) ?? null;
   version++;
@@ -69,7 +78,8 @@ export const useContentVersion = () =>
 /** Todas las imágenes que usa el contenido ("img/…"). */
 export function contentImages(): string[] {
   const s = new Set<string>();
-  for (const sl of [...COMUN.slides, ...PROYECTOS.flatMap((p) => p.slides)]) if (sl.imagen) s.add(sl.imagen);
+  const lineSlides = LINEAS.flatMap((l) => COMUN.lineas[l]?.slides ?? []);
+  for (const sl of [...COMUN.slides, ...lineSlides, ...PROYECTOS.flatMap((p) => p.slides)]) if (sl.imagen) s.add(sl.imagen);
   for (const p of TARJETA?.personas ?? []) for (const x of [p.wechat_qr, p.alipay_qr]) if (x) s.add(x);
   return [...s];
 }

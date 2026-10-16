@@ -2,7 +2,8 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'reac
 import { Camera, Check, ChevronDown, Image as ImageIcon, Mic, Plus, Search, Share, Trash2, Upload, X } from 'lucide-react';
 import { useApp } from '../ctx';
 import { db } from '../lib/db';
-import { PROYECTO_BY_ID, PROYECTOS, proyectoLabel } from '../lib/content';
+import { LINEA_NOMBRE, LINEAS, PROYECTO_BY_ID, PROYECTOS, proyectoLabel } from '../lib/content';
+import { MOTIVOS, SEMAFORO, cambioMotivo, cambioSemaforo, letraDe, motivoDe } from '../lib/semaforo';
 import { addAudio, addPhoto, deleteFicha, editFicha, removeAudio, removePhoto, updateFicha, type FichaBase } from '../lib/store';
 import { exportAll, importBackup } from '../lib/backup';
 import { toast } from '../lib/toast';
@@ -17,6 +18,17 @@ const OTRA = 'otra';
 const proyectoDe = (s: Pick<Supplier, 'project_ids' | 'extra'>) => s.project_ids[0] ?? (s.extra.otra !== undefined ? OTRA : '');
 
 /* ---------- Listado ---------- */
+
+const SEM_OPTIONS: [string, string][] = [...SEMAFORO.map((x): [string, string] => [x.letra, `${x.letra} · ${x.label}`]), ['0', 'Sin semáforo']];
+
+/** Texto en el que busca el listado: stand, datos duros, nota, proyecto, campos clave y semáforo. */
+const searchText = (s: LocalSupplier) =>
+  norm(
+    [
+      s.booth, s.booth.replace(/\s/g, ''), s.company, s.contact, s.wechat, s.note, proyectoLabel(s.project_ids, s.extra.otra),
+      ...Object.values(s.extra.campos ?? {}), letraDe(s.rating), motivoDe(s.tags),
+    ].join(' '),
+  );
 
 function SelectChip({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void }) {
   const cur = options.find(([v]) => v === value);
@@ -39,11 +51,15 @@ function SelectChip({ label, value, options, onChange }: { label: string; value:
 const Row = memo(function Row({ s, onOpen }: { s: LocalSupplier; onOpen: (id: string) => void }) {
   const stand = s.booth.trim().toUpperCase();
   const audios = s.extra.audios?.length ?? 0;
+  const letra = letraDe(s.rating);
   return (
     <div className="row tap srow" onClick={() => onOpen(s.id)}>
       <PhotoImg path={s.photos[0]?.path} thumb className="thumb" />
       <div className="srow-main">
-        <div className={`srow-stand ${stand ? '' : 'missing'}`}>{stand || 'SIN STAND'}</div>
+        <div className="srow-head">
+          {letra && <span className={`sem-pill sem-${letra}`}>{letra}</span>}
+          <span className={`srow-stand ${stand ? '' : 'missing'}`}>{stand || 'SIN STAND'}</span>
+        </div>
         <div className="srow-title">{s.company || <span className="muted">Sin empresa</span>}</div>
         <div className="srow-sub">{proyectoLabel(s.project_ids, s.extra.otra) || 'Sin proyecto'}</div>
         <div className="srow-meta">
@@ -72,6 +88,8 @@ export function Proveedores() {
   const [q, setQ] = useState('');
   const [proy, setProy] = useState('');
   const [dia, setDia] = useState('');
+  const [linea, setLinea] = useState('');
+  const [sem, setSem] = useState('');
   const file = useRef<HTMLInputElement>(null);
 
   const live = useMemo(() => all.filter((s) => !s.deleted).sort((a, b) => b.created_at.localeCompare(a.created_at)), [all]);
@@ -81,10 +99,12 @@ export function Proveedores() {
     return live.filter(
       (s) =>
         (!proy || proyectoDe(s) === proy) &&
+        (!linea || PROYECTO_BY_ID.get(s.project_ids[0] ?? '')?.linea === linea) &&
+        (!sem || (letraDe(s.rating) || '0') === sem) &&
         (!dia || localDate(s.created_at) === dia) &&
-        (!nq || norm([s.booth, s.booth.replace(/\s/g, ''), s.company, s.contact, s.wechat, s.note, proyectoLabel(s.project_ids, s.extra.otra)].join(' ')).includes(nq)),
+        (!nq || searchText(s).includes(nq)),
     );
-  }, [live, q, proy, dia]);
+  }, [live, q, proy, linea, sem, dia]);
 
   const proyOptions: [string, string][] = [...PROYECTOS.map((p): [string, string] => [p.id, p.nombre_es || p.nombre_zh]), [OTRA, 'Otra oportunidad']];
 
@@ -128,6 +148,8 @@ export function Proveedores() {
       </label>
 
       <div className="chips">
+        <SelectChip label="Semáforo" value={sem} options={SEM_OPTIONS} onChange={setSem} />
+        <SelectChip label="Línea" value={linea} options={LINEAS.map((l): [string, string] => [l, LINEA_NOMBRE[l]])} onChange={setLinea} />
         <SelectChip label="Proyecto" value={proy} options={proyOptions} onChange={setProy} />
         <button className={`chip ${dia ? '' : 'on'}`} onClick={() => setDia('')}>
           Todos los días
@@ -213,8 +235,8 @@ export function FichaSheet({ id, proyecto, onClose }: { id: string; proyecto?: s
   const rec = loaded ?? undefined;
   const base: FichaBase = proyecto === OTRA ? { project_ids: [], otra: '' } : { project_ids: proyecto ? [proyecto] : [] };
   // Hasta el primer cambio la ficha no existe: se muestra con lo que llevará (el proyecto precargado).
-  const s: Pick<Supplier, 'booth' | 'company' | 'contact' | 'wechat' | 'note' | 'photos' | 'project_ids' | 'extra'> = rec ?? {
-    booth: '', company: '', contact: '', wechat: '', note: '', photos: [], project_ids: base.project_ids,
+  const s: Pick<Supplier, 'booth' | 'company' | 'contact' | 'wechat' | 'note' | 'photos' | 'project_ids' | 'extra' | 'rating' | 'tags'> = rec ?? {
+    booth: '', company: '', contact: '', wechat: '', note: '', photos: [], project_ids: base.project_ids, rating: 0, tags: [],
     extra: base.otra !== undefined ? { otra: base.otra } : {},
   };
   const exists = !!rec && !rec.deleted;
@@ -291,9 +313,25 @@ export function FichaSheet({ id, proyecto, onClose }: { id: string; proyecto?: s
           className={`ff-stand ${missingStand ? 'bad' : ''}`}
           value={s.booth}
           onChange={(v) => set({ booth: v })}
-          placeholder="Pabellón y stand"
+          placeholder="21.2D12 · o ONLINE-TRV-LED-01"
           autoFocus={loaded === null}
         />
+        <div className="sem-row">
+          {SEMAFORO.map((x) => (
+            <button key={x.letra} className={`sem-btn sem-${x.letra} ${s.rating === x.rating ? 'on' : ''}`} onClick={() => void editFicha(id, base, (c) => cambioSemaforo(c, x.rating))}>
+              <b>{x.letra}</b> · {x.label}
+            </button>
+          ))}
+        </div>
+        {s.rating === 1 && (
+          <div className="chips wrap motivos">
+            {MOTIVOS.map((m) => (
+              <button key={m} className={`chip ${motivoDe(s.tags) === m ? 'on' : ''}`} onClick={() => void editFicha(id, base, (c) => cambioMotivo(c, m))}>
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="group">

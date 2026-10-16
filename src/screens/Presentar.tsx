@@ -1,13 +1,11 @@
 import { useRef, useState } from 'react';
 import { ChevronRight, NotebookPen, X } from 'lucide-react';
 import { useApp } from '../ctx';
-import { COMUN, PROYECTO_BY_ID, PROYECTOS } from '../lib/content';
+import { COMUN, LINEA_NOMBRE as NOMBRE, LINEAS, PROYECTO_BY_ID, PROYECTOS } from '../lib/content';
 import { useAsset } from '../lib/assets';
 import type { Linea, Slide } from '../lib/types';
 import { Empty, NavBar } from '../components/ui';
 
-const LINEAS: Linea[] = ['access', 'sourcing'];
-const NOMBRE: Record<Linea, string> = { access: 'TRAEVO ACCESS', sourcing: 'TRAEVO SOURCING' };
 
 /** Pantalla 1: las dos líneas. */
 export function Lineas() {
@@ -106,7 +104,9 @@ function SlideView({ s }: { s: Slide }) {
 export function Presentation({ id, ficha, onExit }: { id: string; ficha: string; onExit: () => void }) {
   const { openFicha } = useApp();
   const p = PROYECTO_BY_ID.get(id);
-  const slides = [...COMUN.slides, ...(p?.slides ?? [])].filter((s) => s.titulo_es || s.titulo_zh || s.bullets_zh.length || s.imagen);
+  // Comunes → las de su línea → las del proyecto.
+  const lineSlides = p ? (COMUN.lineas[p.linea]?.slides ?? []) : [];
+  const slides = [...COMUN.slides, ...lineSlides, ...(p?.slides ?? [])].filter((s) => s.titulo_es || s.titulo_zh || s.bullets_zh.length || s.imagen);
   const [i, setI] = useState(0);
   const track = useRef<HTMLDivElement>(null);
   const go = (to: number) => {

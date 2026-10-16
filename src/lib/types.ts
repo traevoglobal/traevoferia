@@ -74,7 +74,7 @@ export interface Asset {
 }
 
 /* ---------- Contenido privado (private/data/*.js) ---------- */
-export type Linea = 'access' | 'sourcing';
+export type Linea = 'access' | 'sourcing' | 'partners';
 
 export interface Slide {
   titulo_es: string;
@@ -103,7 +103,8 @@ export interface Proyecto {
 }
 
 export interface Comun {
-  lineas: Partial<Record<Linea, { desc_es: string; desc_zh: string }>>;
+  /** Por línea: descripción y slides propias (van tras las comunes y antes de las del proyecto). */
+  lineas: Partial<Record<Linea, { desc_es: string; desc_zh: string; slides?: Slide[] }>>;
   slides: Slide[];
 }
 

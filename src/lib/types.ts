@@ -11,6 +11,10 @@ export interface AudioRef {
 /** Datos de la ficha que no tienen columna propia (jsonb `extra`). */
 export interface SupplierExtra {
   audios?: AudioRef[];
+  /** Línea de la ficha (Access, Sourcing o Partners). Si falta, la del proyecto. */
+  linea?: Linea;
+  /** Fotos y audios quitados a propósito: la fusión entre móviles no los vuelve a añadir. */
+  borrados?: string[];
   /** "Otra oportunidad": descripción en una línea (si existe, la ficha no es de un proyecto). */
   otra?: string;
   /** Campos clave del proyecto, por su nombre ("MOQ": "500"). */
@@ -50,7 +54,26 @@ export interface LocalPhoto {
   supplier_id: string;
   blob: Blob;
   thumb?: Blob;
+  /** Duración, si es un audio (para volver a enlazarlo si se perdiera de la ficha). */
+  secs?: number;
   uploaded: 0 | 1;
+}
+
+/** Grabación en curso: sus trozos se guardan en el móvil cada segundo (tabla recParts). */
+export interface Recording {
+  id: string;
+  ficha: string;
+  base?: { project_ids: string[]; otra?: string; linea?: Linea };
+  mime: string;
+  t0: number;
+}
+
+export interface RecPart {
+  id?: number;
+  rec: string;
+  seq: number;
+  blob: Blob;
+  t: number;
 }
 
 export interface Profile {

@@ -2,21 +2,26 @@ import { useEffect, useRef, useState } from 'react';
 import { Mic, Pause, Play, Square, X } from 'lucide-react';
 import { getPhotoBlob } from '../lib/photos';
 import { toast } from '../lib/toast';
+import { finishRecording, saveRecPart, startRecording, type FichaBase } from '../lib/store';
 
 export const fmtSecs = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-/** Botón de nota de voz: un toque graba, otro para. Funciona sin red (el audio queda en el móvil). */
-export function AudioRecorder({ onDone }: { onDone: (blob: Blob, secs: number) => void }) {
+/** Botón de nota de voz: un toque graba, otro para. Funciona sin red.
+    Mientras graba, cada segundo se escribe en el móvil (store.saveRecPart): si la app se cierra o iOS la corta
+    a mitad, lo grabado se recupera al volver a abrirla y va a su ficha. Al parar, el audio queda en la ficha
+    en una sola transacción y se sube a Supabase en cuanto hay red. */
+export function AudioRecorder({ ficha, base, onSaved }: { ficha: string; base?: FichaBase; onSaved?: () => void }) {
   const [rec, setRec] = useState<{ r: MediaRecorder; t0: number } | null>(null);
   const [secs, setSecs] = useState(0);
-  const done = useRef(onDone);
-  done.current = onDone;
+  const saved = useRef(onSaved);
+  saved.current = onSaved;
 
   useEffect(() => {
     if (!rec) return;
     const t = setInterval(() => setSecs(Math.round((Date.now() - rec.t0) / 1000)), 250);
     return () => clearInterval(t);
   }, [rec]);
+  // Al cerrar la ficha grabando: se para y se guarda igual.
   useEffect(() => () => {
     if (rec && rec.r.state !== 'inactive') rec.r.stop();
   }, [rec]);
@@ -26,17 +31,33 @@ export function AudioRecorder({ onDone }: { onDone: (blob: Blob, secs: number) =
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported?.(t));
       const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+      const recId = await startRecording(ficha, base, r.mimeType || type || 'audio/mp4');
       const chunks: Blob[] = [];
+      let seq = 0;
+      let writes = Promise.resolve();
       const t0 = Date.now();
       r.ondataavailable = (e) => {
-        if (e.data.size) chunks.push(e.data);
+        if (!e.data.size) return;
+        chunks.push(e.data);
+        const n = seq++;
+        writes = writes.then(() => saveRecPart(recId, n, e.data).then(() => undefined, () => undefined));
       };
       r.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunks, { type: r.mimeType || type || 'audio/mp4' });
-        if (blob.size) done.current(blob, Math.max(1, Math.round((Date.now() - t0) / 1000)));
         setRec(null);
         setSecs(0);
+        const dur = Math.max(1, Math.round((Date.now() - t0) / 1000));
+        // Espera a que el último trozo esté escrito; si el móvil no pudo escribirlos, usa los de memoria.
+        void writes
+          .then(() => finishRecording(recId, dur, chunks))
+          .then((ok) => {
+            if (ok) {
+              navigator.vibrate?.(20);
+              toast('Nota de voz guardada');
+              saved.current?.();
+            }
+          })
+          .catch(() => toast('Error al guardar el audio: se recuperará al reabrir la app'));
       };
       r.start(1000);
       setRec({ r, t0 });

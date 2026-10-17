@@ -3,7 +3,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { db, getMeta, setMeta } from './db';
 import { getMyId, supabase } from './supabase';
 import { TEXT_FIELDS, type LocalSupplier, type Profile } from './types';
-import { useLive } from './util';
+import { nextIso, useLive } from './util';
 import { storeContent } from './content';
 import { prefetchThumbs, thumbPath } from './photos';
 import { syncAssets } from './assets';
@@ -28,8 +28,13 @@ export function useSyncStatus(): Status {
   );
 }
 
+/** Lo que falta por subir: fichas cambiadas y fotos o audios aún solo en el móvil. */
+async function pendingCount() {
+  return (await db.suppliers.where('_dirty').equals(1).count()) + (await db.photos.filter((p) => !p.uploaded).count());
+}
+
 export function usePendingCount(): number {
-  return useLive(() => db.suppliers.where('_dirty').equals(1).count(), [], 0);
+  return useLive(pendingCount, [], 0);
 }
 
 const syncedHandlers = new Set<() => void>();
@@ -70,19 +75,49 @@ function toRemoteSupplier(s: LocalSupplier) {
   return { ...rest, created_by: rest.created_by || null, updated_by: rest.updated_by || null };
 }
 
-/* ---------- Merge (last-write-wins por updated_at) ---------- */
+/* ---------- Merge ----------
+   Last-write-wins por updated_at para la ficha, salvo fotos y audios: esos se suman de las dos versiones
+   (menos los quitados a propósito, extra.borrados). Así, si los dos móviles tocan la misma ficha a la vez,
+   ningún audio ni foto se queda fuera; la versión fusionada se vuelve a subir. */
+function unionMedia(winner: LocalSupplier, other: LocalSupplier): LocalSupplier | null {
+  const gone = new Set([...(winner.extra.borrados ?? []), ...(other.extra.borrados ?? [])]);
+  const photos = winner.photos.filter((x) => !gone.has(x.path));
+  for (const x of other.photos) if (!gone.has(x.path) && !photos.some((y) => y.path === x.path)) photos.push(x);
+  const audios = (winner.extra.audios ?? []).filter((x) => !gone.has(x.path));
+  for (const x of other.extra.audios ?? []) if (!gone.has(x.path) && !audios.some((y) => y.path === x.path)) audios.push(x);
+  const key = (xs: { path: string }[]) => xs.map((x) => x.path).join('|');
+  const same =
+    key(photos) === key(winner.photos) &&
+    key(audios) === key(winner.extra.audios ?? []) &&
+    gone.size === new Set(winner.extra.borrados ?? []).size;
+  if (same) return null;
+  return { ...winner, photos, extra: { ...winner.extra, audios, ...(gone.size ? { borrados: [...gone] } : {}) } };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function mergeSuppliers(rows: any[]) {
   if (!rows.length) return;
+  let again = false;
   await db.transaction('rw', db.suppliers, async () => {
     for (const r of rows) {
       if (!r?.id) continue;
       const remote = normalizeSupplier(r);
       const local = await db.suppliers.get(remote.id);
-      if (local && Date.parse(local.updated_at) > Date.parse(remote.updated_at)) continue;
-      await db.suppliers.put(remote);
+      if (!local) {
+        await db.suppliers.put(remote);
+        continue;
+      }
+      const localWins = Date.parse(local.updated_at) > Date.parse(remote.updated_at);
+      const merged = localWins ? unionMedia(local, remote) : unionMedia(remote, local);
+      if (merged) {
+        // La fusión es una versión nueva: más reciente que las dos, y pendiente de subir.
+        const newest = localWins ? local.updated_at : remote.updated_at;
+        await db.suppliers.put({ ...merged, updated_at: nextIso(newest), _dirty: 1 });
+        again = true;
+      } else if (!localWins) await db.suppliers.put(remote);
     }
   });
+  if (again) syncSoon(1000);
 }
 
 /* ---------- Perfiles ---------- */
@@ -129,27 +164,35 @@ export async function saveProfile(p: Profile) {
 }
 
 /* ---------- Push ---------- */
+/** Sube las fotos y audios que solo están en el móvil. Van aparte de las fichas: un audio que tarde en subir
+    no retrasa que el otro móvil vea la ficha. Si una subida falla, se reintenta en el siguiente ciclo. */
+async function pushMedia(): Promise<string | null> {
+  let err: string | null = null;
+  const pending = await db.photos.filter((p) => !p.uploaded).toArray();
+  const up = (path: string, blob: Blob) =>
+    supabase.storage.from('photos').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: true, cacheControl: '31536000' });
+  const ok = (e: { message: string } | null) => !e || /exist|duplicate/i.test(e.message);
+  // Primero los audios: son lo que no se puede repetir.
+  pending.sort((a, b) => Number(a.path.endsWith('.jpg')) - Number(b.path.endsWith('.jpg')));
+  for (const p of pending) {
+    if (!navigator.onLine) break;
+    let { error } = await up(p.path, p.blob);
+    // Miniatura aparte: el otro móvil la usa en los listados en vez de la foto entera.
+    if (ok(error) && p.thumb) ({ error } = await up(thumbPath(p.path), p.thumb));
+    if (!ok(error)) {
+      err = error!.message;
+      continue;
+    }
+    await db.photos.update(p.path, { uploaded: 1 });
+  }
+  return err;
+}
+
 async function pushSuppliers(): Promise<string | null> {
   let err: string | null = null;
   const dirty = await db.suppliers.where('_dirty').equals(1).toArray();
   dirty.sort((a, b) => a.updated_at.localeCompare(b.updated_at));
   for (const s of dirty) {
-    const pending = (await db.photos.where('supplier_id').equals(s.id).toArray()).filter((p) => !p.uploaded);
-    let ok = true;
-    const up = (path: string, blob: Blob) =>
-      supabase.storage.from('photos').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: true, cacheControl: '31536000' });
-    for (const p of pending) {
-      let { error } = await up(p.path, p.blob);
-      // Miniatura aparte: el otro móvil la usa en los listados en vez de la foto entera.
-      if ((!error || /exist|duplicate/i.test(error.message)) && p.thumb) ({ error } = await up(thumbPath(p.path), p.thumb));
-      if (error && !/exist|duplicate/i.test(error.message)) {
-        err = error.message;
-        ok = false;
-        break;
-      }
-      await db.photos.update(p.path, { uploaded: 1 });
-    }
-    if (!ok) continue;
     const { error } = await supabase.from('suppliers').upsert(toRemoteSupplier(s));
     if (error) {
       err = error.message;
@@ -234,10 +277,11 @@ async function syncOnce() {
     const { data: auth, error: authError } = await supabase.auth.getSession();
     if (authError || !auth.session) return setStatus({ syncing: false, error: 'Sin conexión con el servidor' });
     const e1 = await pushSuppliers();
+    const e2 = await pushMedia();
     await pullProfiles().catch(() => {});
     await pullContent().catch((e) => console.warn('Contenido privado:', e));
     await pullSuppliers();
-    setStatus({ syncing: false, error: e1 });
+    setStatus({ syncing: false, error: e1 ?? e2 });
     syncedHandlers.forEach((f) => f());
     // Después, sin bloquear el indicador: miniaturas de las fichas del otro móvil para verlas sin red.
     const others = await db.suppliers.filter((s) => !s.deleted && s.photos.length > 0).toArray();
@@ -261,7 +305,7 @@ export function startSync(): () => void {
   document.addEventListener('visibilitychange', onVisible);
 
   const interval = setInterval(async () => {
-    const n = await db.suppliers.where('_dirty').equals(1).count();
+    const n = await pendingCount();
     if (n > 0) void syncNow();
   }, 30_000);
 

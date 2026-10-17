@@ -2,12 +2,12 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'reac
 import { Camera, Check, ChevronDown, Image as ImageIcon, Mic, Plus, Search, Share, Trash2, Upload, X } from 'lucide-react';
 import { useApp } from '../ctx';
 import { db } from '../lib/db';
-import { LINEA_NOMBRE, LINEAS, PROYECTO_BY_ID, PROYECTOS, proyectoLabel } from '../lib/content';
+import { LINEA_NOMBRE, LINEAS, PROYECTO_BY_ID, PROYECTOS, lineaDe, proyectoLabel } from '../lib/content';
 import { MOTIVOS, SEMAFORO, cambioMotivo, cambioSemaforo, letraDe, motivoDe } from '../lib/semaforo';
-import { addAudio, addPhoto, deleteFicha, editFicha, removeAudio, removePhoto, updateFicha, type FichaBase } from '../lib/store';
+import { addPhoto, deleteFicha, editFicha, removeAudio, removePhoto, updateFicha, type FichaBase } from '../lib/store';
 import { exportAll, importBackup } from '../lib/backup';
 import { toast } from '../lib/toast';
-import type { LocalSupplier, Supplier } from '../lib/types';
+import type { Linea, LocalSupplier, Supplier } from '../lib/types';
 import { diaLabel, fmtTime, localDate, norm, useLive } from '../lib/util';
 import { AutoTextarea, Avatar, Empty, NavBar, PhotoImg, Sheet, SyncPill } from '../components/ui';
 import { CameraView } from '../components/Camera';
@@ -52,6 +52,7 @@ const Row = memo(function Row({ s, onOpen }: { s: LocalSupplier; onOpen: (id: st
   const stand = s.booth.trim().toUpperCase();
   const audios = s.extra.audios?.length ?? 0;
   const letra = letraDe(s.rating);
+  const lin = lineaDe(s);
   return (
     <div className="row tap srow" onClick={() => onOpen(s.id)}>
       <PhotoImg path={s.photos[0]?.path} thumb className="thumb" />
@@ -61,7 +62,9 @@ const Row = memo(function Row({ s, onOpen }: { s: LocalSupplier; onOpen: (id: st
           <span className={`srow-stand ${stand ? '' : 'missing'}`}>{stand || 'SIN STAND'}</span>
         </div>
         <div className="srow-title">{s.company || <span className="muted">Sin empresa</span>}</div>
-        <div className="srow-sub">{proyectoLabel(s.project_ids, s.extra.otra) || 'Sin proyecto'}</div>
+        <div className="srow-sub">
+          {lin && <i className={`dot ${lin}`} />} {proyectoLabel(s.project_ids, s.extra.otra) || (lin ? LINEA_NOMBRE[lin] : 'Sin línea')}
+        </div>
         <div className="srow-meta">
           <Avatar id={s.created_by} size={18} />
           <span>{fmtTime(s.created_at)}</span>
@@ -99,7 +102,7 @@ export function Proveedores() {
     return live.filter(
       (s) =>
         (!proy || proyectoDe(s) === proy) &&
-        (!linea || PROYECTO_BY_ID.get(s.project_ids[0] ?? '')?.linea === linea) &&
+        (!linea || lineaDe(s) === linea) &&
         (!sem || (letraDe(s.rating) || '0') === sem) &&
         (!dia || localDate(s.created_at) === dia) &&
         (!nq || searchText(s).includes(nq)),
@@ -233,15 +236,19 @@ export function FichaSheet({ id, proyecto, onClose }: { id: string; proyecto?: s
   // undefined mientras carga; null si la ficha aún no existe.
   const loaded = useLive(async () => (await db.suppliers.get(id)) ?? null, [id], undefined);
   const rec = loaded ?? undefined;
-  const base: FichaBase = proyecto === OTRA ? { project_ids: [], otra: '' } : { project_ids: proyecto ? [proyecto] : [] };
+  const base: FichaBase =
+    proyecto === OTRA ? { project_ids: [], otra: '' } : { project_ids: proyecto ? [proyecto] : [], linea: PROYECTO_BY_ID.get(proyecto ?? '')?.linea };
   // Hasta el primer cambio la ficha no existe: se muestra con lo que llevará (el proyecto precargado).
   const s: Pick<Supplier, 'booth' | 'company' | 'contact' | 'wechat' | 'note' | 'photos' | 'project_ids' | 'extra' | 'rating' | 'tags'> = rec ?? {
     booth: '', company: '', contact: '', wechat: '', note: '', photos: [], project_ids: base.project_ids, rating: 0, tags: [],
-    extra: base.otra !== undefined ? { otra: base.otra } : {},
+    extra: { ...(base.otra !== undefined ? { otra: base.otra } : {}), ...(base.linea ? { linea: base.linea } : {}) },
   };
   const exists = !!rec && !rec.deleted;
   const sel = proyectoDe(s);
   const p = PROYECTO_BY_ID.get(sel);
+  const lin = lineaDe(s);
+  // Estado de subida de los audios grabados en este móvil (los del otro móvil ya están en Supabase).
+  const media = useLive(async () => new Map((await db.photos.where('supplier_id').equals(id).toArray()).map((x) => [x.path, x.uploaded])), [id], new Map<string, 0 | 1>());
 
   const [cam, setCam] = useState(false);
   const [shots, setShots] = useState<string[]>([]);
@@ -258,8 +265,25 @@ export function FichaSheet({ id, proyecto, onClose }: { id: string; proyecto?: s
       const extra = { ...c.extra };
       if (v === OTRA) extra.otra = extra.otra ?? '';
       else delete extra.otra;
+      const pl = PROYECTO_BY_ID.get(v)?.linea;
+      if (pl) extra.linea = pl;
       return { project_ids: v && v !== OTRA ? [v] : [], extra };
     });
+  /** Elegir línea; si el proyecto elegido es de otra línea, se quita. Tocar la activa la quita (y su proyecto). */
+  const pickLinea = (l: Linea) =>
+    void editFicha(id, base, (c) => {
+      const extra = { ...c.extra };
+      if (lineaDe(c) === l) {
+        delete extra.linea;
+        return { extra, project_ids: [] };
+      }
+      extra.linea = l;
+      const keep = PROYECTO_BY_ID.get(c.project_ids[0] ?? '')?.linea === l;
+      return { extra, project_ids: keep ? c.project_ids : [] };
+    });
+  const removeClip = (path: string) => {
+    if (confirm('¿Quitar esta nota de voz de la ficha?')) void removeAudio(id, path);
+  };
 
   const addBlob = async (b: Blob, fromCam: boolean) => {
     setBusy((n) => n + 1);
@@ -335,9 +359,20 @@ export function FichaSheet({ id, proyecto, onClose }: { id: string; proyecto?: s
       </div>
 
       <div className="group">
+        <div className="group-title">Línea</div>
+        <div className="lin-row">
+          {LINEAS.map((l) => (
+            <button key={l} className={`lin-btn ${l} ${lin === l ? 'on' : ''}`} onClick={() => pickLinea(l)}>
+              {LINEA_NOMBRE[l].replace('TRAEVO ', '')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="group">
         <div className="group-title">Proyecto</div>
         <div className="chips wrap">
-          {PROYECTOS.map((x) => (
+          {PROYECTOS.filter((x) => !lin || x.linea === lin).map((x) => (
             <button key={x.id} className={`chip ${sel === x.id ? 'on' : ''}`} onClick={() => pick(sel === x.id ? '' : x.id)}>
               <i className={`dot ${x.linea}`} />
               {x.nombre_es || x.nombre_zh}
@@ -424,11 +459,16 @@ export function FichaSheet({ id, proyecto, onClose }: { id: string; proyecto?: s
       </div>
 
       <div className="group">
-        <AudioRecorder onDone={(b, secs) => void addAudio(id, base, b, secs)} />
+        <AudioRecorder ficha={id} base={base} />
         {(s.extra.audios?.length ?? 0) > 0 && (
           <div className="clips">
             {s.extra.audios!.map((a) => (
-              <AudioClip key={a.path} path={a.path} secs={a.secs} onRemove={() => void removeAudio(id, a.path)} />
+              <span key={a.path} className="clip-wrap">
+                <AudioClip path={a.path} secs={a.secs} onRemove={() => removeClip(a.path)} />
+                <small className={media.get(a.path) === 0 ? 'clip-st pend' : 'clip-st ok'}>
+                  {media.get(a.path) === 0 ? 'En el móvil · se sube con red' : 'Subido'}
+                </small>
+              </span>
             ))}
           </div>
         )}

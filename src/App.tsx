@@ -5,6 +5,8 @@ import { Ctx, type AppCtx } from './ctx';
 import { AUTH_STORAGE_KEY, setMyId, supabase } from './lib/supabase';
 import { db } from './lib/db';
 import { ensureProfile, startSync } from './lib/sync';
+import { recoverRecordings, repairMedia } from './lib/store';
+import { toast } from './lib/toast';
 import { navBack, keptStack, navInit, navOpen, navPush, navTab, useNav, type Overlay, type Tab } from './lib/nav';
 import { useToast } from './lib/toast';
 import { useLive, uuid } from './lib/util';
@@ -87,6 +89,11 @@ function Main({ userId }: { userId: string }) {
   const tab = nav.tab;
 
   useEffect(() => {
+    // Antes de nada: grabaciones cortadas por un cierre y fotos/audios que hubieran quedado fuera de su ficha.
+    void recoverRecordings()
+      .then((n) => n && toast(n === 1 ? 'Recuperada 1 nota de voz que se estaba grabando' : `Recuperadas ${n} notas de voz que se estaban grabando`))
+      .then(repairMedia)
+      .catch(console.error);
     const stop = startSync();
     ensureProfile(userId)
       .then(() => setChecked(true))

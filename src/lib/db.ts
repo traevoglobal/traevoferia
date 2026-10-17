@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Asset, ContentRow, LocalPhoto, LocalSupplier, Profile } from './types';
+import type { Asset, ContentRow, LocalPhoto, LocalSupplier, Profile, RecPart, Recording } from './types';
 
 class FeriaDB extends Dexie {
   suppliers!: Table<LocalSupplier, string>;
@@ -9,6 +9,8 @@ class FeriaDB extends Dexie {
   content!: Table<ContentRow, string>;
   assets!: Table<Asset, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
+  recordings!: Table<Recording, string>;
+  recParts!: Table<RecPart, number>;
 
   constructor() {
     super('traevo-feria');
@@ -48,6 +50,8 @@ class FeriaDB extends Dexie {
       );
     // v5: imágenes del contenido en el móvil; fuera borradores y notas de proyecto (la ficha se autoguarda).
     this.version(5).stores({ assets: 'path', drafts: null, notes: null });
+    // v6: grabaciones en curso, guardadas a trozos para no perder un audio si la app se cierra grabando.
+    this.version(6).stores({ recordings: 'id', recParts: '++id, rec' });
   }
 }
 

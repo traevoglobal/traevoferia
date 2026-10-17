@@ -84,6 +84,10 @@ export function contentImages(): string[] {
   return [...s];
 }
 
+/** Línea de una ficha: la elegida o, si no, la de su proyecto. */
+export const lineaDe = (s: { project_ids: string[]; extra: { linea?: Linea } }): Linea | undefined =>
+  s.extra.linea ?? PROYECTO_BY_ID.get(s.project_ids[0] ?? '')?.linea;
+
 /** Nombre del proyecto de una ficha para listados ("Otra: …" si no es de un proyecto). */
 export function proyectoLabel(projectIds: string[], otra?: string): string {
   const p = PROYECTO_BY_ID.get(projectIds[0] ?? '');

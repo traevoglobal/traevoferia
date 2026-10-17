@@ -2,7 +2,7 @@
    Las fotos no viajan en el JSON (pesarían cientos de MB): van en Supabase y en cada móvil; el CSV y el
    JSON guardan la ruta de cada foto para localizarlas. */
 import { db } from './db';
-import { LINEA_NOMBRE, PROYECTO_BY_ID, PROYECTOS, proyectoLabel } from './content';
+import { LINEA_NOMBRE, PROYECTO_BY_ID, PROYECTOS, lineaDe, proyectoLabel } from './content';
 import { letraDe, motivoDe } from './semaforo';
 import { getMyId } from './supabase';
 import { normalizeSupplier, syncSoon } from './sync';
@@ -28,7 +28,7 @@ function columns(rows: LocalSupplier[], who: Map<string, Profile>): Col[] {
     ['Stand', (s) => s.booth.toUpperCase()],
     ['Proyecto', (s) => proyectoLabel(s.project_ids, s.extra.otra)],
     ['Línea', (s) => {
-      const l = PROYECTO_BY_ID.get(s.project_ids[0] ?? '')?.linea;
+      const l = lineaDe(s);
       return l ? LINEA_NOMBRE[l] : '';
     }],
     ['Semáforo', (s) => letraDe(s.rating)],
